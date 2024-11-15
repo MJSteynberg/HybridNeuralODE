@@ -1,10 +1,8 @@
 from data.dataloaders import Dissipative
 import torch
 import torch.nn as nn
-from models.trainingGPT import Trainer
+from models.training import Trainer
 from models.neural_odes import NeuralODE
-from models.plot import plot_errors_separate, plot_results_separate
-from models.utils import calculate_errors
 from models.FEM import heatsolve
 from scipy.interpolate import griddata
 import matplotlib.pyplot as plt
@@ -169,7 +167,7 @@ def main():
     # DATA
     # =============================================================================
     # Load from MATLAB
-    filename_data = '../u.mat'
+    filename_data = 'u.mat'
     datasets = Dissipative(filename_data)
     t, u = datasets[:]
 

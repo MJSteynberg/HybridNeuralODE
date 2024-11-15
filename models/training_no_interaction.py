@@ -112,7 +112,6 @@ class Trainer:
                     f"Alpha: {torch.max(self.model_heat.alpha):.10f}")
 
         print(f"Total time: {time.time() - self.start_time:.1f} sec")
-        
         return alpha_list, loss_list
 
     def _train_epoch(self, u_train, u_target, u0):
@@ -120,13 +119,13 @@ class Trainer:
         heat_solution = self.model_heat(u0)
 
         # Compute trajectory predicted by NODE
-        u_pred, traj = self.model_node(u_train)
+        #u_pred, traj = self.model_node(u_train)
 
         # Forward integration for grid
-        grid_pred, grid_traj_forward = self.model_node(torch.randn((3,3)).to(self.device))
+        # grid_pred, grid_traj_forward = self.model_node(self.grid)
 
         # Interpolate heat at trajectories
-        interpolated_heat_traj = interpolate_heat_solution(grid_traj_forward, heat_solution)
+        # interpolated_heat_traj = interpolate_heat_solution(grid_traj_forward, heat_solution)
         interpolated_heat_target = interpolate_heat_solution(u_target, heat_solution)
 
         # Regularization parameter and calculation
@@ -155,18 +154,15 @@ class Trainer:
 
         # Calculate the loss
         loss_FD = self.loss_func(interpolated_heat_target, u_target[:, :, 2])
-        loss = (100 * self.loss_func(traj, u_target)
-                + lambda_reg * ls_reg
-                + 1000 * loss_FD
-                + self.loss_func(interpolated_heat_traj, grid_traj_forward[:, :, 2]))
+        loss = 1000 * loss_FD
+                #+ self.loss_func(interpolated_heat_traj, grid_traj_forward[:, :, 2]))
 
         # Optimizer steps
-        self.optimizer_node.zero_grad()
+        #self.optimizer_node.zero_grad()
         self.optimizer_heat.zero_grad()
         loss.backward()
-        self.optimizer_node.step()
+        #self.optimizer_node.step()
         self.optimizer_heat.step()
-        self.scheduler_anode.step()
         self.scheduler_heat.step()
 
         return loss.item(), loss_FD.item()
