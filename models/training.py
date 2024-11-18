@@ -94,7 +94,8 @@ class Trainer:
         u_train = (u[0, :, :].to(self.device))
         u_target = u[1:, :, :].to(self.device)
         
-        alpha_list = torch.empty(num_epochs)
+        
+        alpha_list = torch.empty(num_epochs, self.model_heat.nX, self.model_heat.nX)
         loss_list = torch.empty(num_epochs)
 
         self.num_epochs = num_epochs
@@ -103,7 +104,7 @@ class Trainer:
         # Training iteration
         for epoch in range(num_epochs):
             loss, loss_FD = self._train_epoch(u_train, u_target, u0)
-            alpha_list[epoch] = torch.max(self.model_heat.alpha)
+            alpha_list[epoch] = nn.functional.interpolate(self.model_heat.alpha.view(1, 1, self.model_heat.param_grid, self.model_heat.param_grid), (self.model_heat.nX, self.model_heat.nX), mode='nearest').view(self.model_heat.nX, self.model_heat.nX)
             loss_list[epoch] = loss_FD
             if (epoch + 1) % self.print_freq == 1:
                 elapsed_time = (time.time() - self.start_time) / 60.

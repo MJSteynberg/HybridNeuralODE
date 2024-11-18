@@ -94,7 +94,7 @@ class Trainer:
         u_train = (u[0, :, :].to(self.device))
         u_target = u[1:, :, :].to(self.device)
         
-        alpha_list = torch.empty(num_epochs)
+        alpha_list = torch.empty(num_epochs, self.model_heat.nX, self.model_heat.nX)
         loss_list = torch.empty(num_epochs)
 
         self.num_epochs = num_epochs
@@ -103,7 +103,7 @@ class Trainer:
         # Training iteration
         for epoch in range(num_epochs):
             loss, loss_FD = self._train_epoch(u_train, u_target, u0)
-            alpha_list[epoch] = torch.max(self.model_heat.alpha)
+            alpha_list[epoch] = nn.functional.interpolate(self.model_heat.alpha.view(1, 1, self.model_heat.param_grid, self.model_heat.param_grid), (self.model_heat.nX, self.model_heat.nX), mode='nearest').view(self.model_heat.nX, self.model_heat.nX)
             loss_list[epoch] = loss_FD
             if (epoch + 1) % self.print_freq == 1:
                 elapsed_time = (time.time() - self.start_time) / 60.
@@ -128,29 +128,29 @@ class Trainer:
         # interpolated_heat_traj = interpolate_heat_solution(grid_traj_forward, heat_solution)
         interpolated_heat_target = interpolate_heat_solution(u_target, heat_solution)
 
-        # Regularization parameter and calculation
-        lambda_reg = 1e-4 if self.reg == 'l1' else 1e-3
-        ls_reg = 0.0
+        # # Regularization parameter and calculation
+        # lambda_reg = 1e-4 if self.reg == 'l1' else 1e-3
+        # ls_reg = 0.0
 
-        if self.reg == 'l1':
-            # Use list comprehension to avoid redundant attribute calls
-            weights = [self.model_node.dynamics.fc1_time_1.weight,
-                       self.model_node.dynamics.fc1_time_2.weight,
-                       self.model_node.dynamics.fc1_time_3.weight,
-                       self.model_node.dynamics.fc3_time_1.weight,
-                       self.model_node.dynamics.fc3_time_2.weight,
-                       self.model_node.dynamics.fc3_time_3.weight]
-            ls_reg = sum(w.abs().sum() for w in weights)
+        # if self.reg == 'l1':
+        #     # Use list comprehension to avoid redundant attribute calls
+        #     weights = [self.model_node.dynamics.fc1_time_1.weight,
+        #                self.model_node.dynamics.fc1_time_2.weight,
+        #                self.model_node.dynamics.fc1_time_3.weight,
+        #                self.model_node.dynamics.fc3_time_1.weight,
+        #                self.model_node.dynamics.fc3_time_2.weight,
+        #                self.model_node.dynamics.fc3_time_3.weight]
+        #     ls_reg = sum(w.abs().sum() for w in weights)
 
-        elif self.reg == 'barron':
-            # Optimized Barron regularization calculation
-            weights_fc1 = torch.cat([self.model_node.dynamics.fc1_time_1.weight,
-                                     self.model_node.dynamics.fc1_time_2.weight], dim=0)
-            weights_fc3 = torch.cat([self.model_node.dynamics.fc3_time_1.weight,
-                                     self.model_node.dynamics.fc3_time_2.weight,
-                                     self.model_node.dynamics.fc3_time_3.weight], dim=0)
-            ls_reg = (weights_fc1.pow(2).sum(dim=1).sqrt() *
-                      weights_fc3.pow(2).sum(dim=1).sqrt().sum())
+        # elif self.reg == 'barron':
+        #     # Optimized Barron regularization calculation
+        #     weights_fc1 = torch.cat([self.model_node.dynamics.fc1_time_1.weight,
+        #                              self.model_node.dynamics.fc1_time_2.weight], dim=0)
+        #     weights_fc3 = torch.cat([self.model_node.dynamics.fc3_time_1.weight,
+        #                              self.model_node.dynamics.fc3_time_2.weight,
+        #                              self.model_node.dynamics.fc3_time_3.weight], dim=0)
+        #     ls_reg = (weights_fc1.pow(2).sum(dim=1).sqrt() *
+        #               weights_fc3.pow(2).sum(dim=1).sqrt().sum())
 
         # Calculate the loss
         loss_FD = self.loss_func(interpolated_heat_target, u_target[:, :, 2])
