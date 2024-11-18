@@ -90,12 +90,12 @@ def train():
     # =============================================================================
     # DATA
     # =============================================================================
-    filename_data = './u.mat'
+    filename_data = 'Experiments/4/u.mat'
     datasets = Dissipative(filename_data)
     t, u = datasets[:]
 
     # Create indices and split for train and test data
-    train_size = int(0.8 * datasets.length_u())
+    train_size = int(1 * datasets.length_u())
     print(train_size)
     indices = torch.randperm(datasets.length_u())
     train_indices, test_indices = indices[:train_size], indices[train_size:]
@@ -204,6 +204,8 @@ if __name__ == '__main__':
         X, Y = np.meshgrid(x, y)
         ax1.plot_surface(X, Y, alpha[-1], cmap='viridis')
         ax2.plot_surface(X, Y, alpha_hybrid[-1], cmap='viridis')
+        # plot the (xy) trajectories of the heat source
+        ax1.plot()
         
         plt.savefig(f'Experiments/4/alpha_{i}.png', dpi = 300)
         
