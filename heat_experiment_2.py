@@ -90,7 +90,7 @@ def train():
     # =============================================================================
     # DATA
     # =============================================================================
-    filename_data = 'Experiments/2/u2new.mat'
+    filename_data = 'Experiments/2/u.mat'
     datasets = Dissipative(filename_data)
     t, u = datasets[:]
 
