@@ -21,6 +21,47 @@ def interpolate_heat_solution(data, heat_solution, nX=11):
                         containing the interpolated heat values
                         for each trajectory at each time step.
     """
+    # Precompute normalization constants
+    normalization_factor = 1 / 6.0  # 1 / (3 + 3)
+
+    # Normalize query points across all time steps
+    query_points = data[..., :2]  # Extract (x, y) coordinates
+    query_normalized = torch.stack((
+        2 * (query_points[..., 0] + 3) * normalization_factor - 1,
+        2 * (query_points[..., 1] + 3) * normalization_factor - 1
+    ), dim=-1).unsqueeze(1)  # Shape: (T, 1, N, 2)
+
+    # Prepare heat_solution for batch processing
+    grid_values = heat_solution.unsqueeze(1)  # Shape: (T, 1, H, W)
+
+    # Perform batch grid sampling
+    interpolated = nn.functional.grid_sample(
+        grid_values, query_normalized, mode='bilinear', align_corners=True
+    )  # Output shape: (T, 1, N, 1)
+    # Squeeze to match output shape
+    interpolated_solution = interpolated.squeeze(1).squeeze(1)  # Shape: (T, N)
+
+    return interpolated_solution
+        
+    
+    
+
+def interpolate_heat_solution_old(data, heat_solution, nX=11):
+    """
+    Interpolate the heat solution onto the trajectory points for
+    each time step using bilinear interpolation.
+
+    Args:
+    - data (tensor): A tensor of shape (101, N, 3)
+                        containing the trajectories (x, y, u).
+    - heat_solution (tensor): A tensor of shape (101, 21, 21)
+                        containing the heat solution over time.
+
+    Returns:
+    - interpolated_solution (tensor): A tensor of shape (101, N)
+                        containing the interpolated heat values
+                        for each trajectory at each time step.
+    """
 
     # Assuming grid is [-3, 3] in both x and y
     x_grid = torch.linspace(-3, 3, nX, device=data.device)
@@ -104,7 +145,7 @@ class Trainer:
         # Training iteration
         for epoch in range(num_epochs):
             loss, loss_FD = self._train_epoch(u_train, u_target, u0)
-            alpha_list[epoch] = nn.functional.interpolate(self.model_heat.alpha.view(1, 1, self.model_heat.param_grid, self.model_heat.param_grid), (self.model_heat.nX, self.model_heat.nX), mode='nearest').view(self.model_heat.nX, self.model_heat.nX)
+            alpha_list[epoch] = nn.functional.interpolate(self.model_heat.alpha.view(1, 1, self.model_heat.param_x, self.model_heat.param_y), (self.model_heat.nX, self.model_heat.nX), mode='nearest').view(self.model_heat.nX, self.model_heat.nX)
             loss_list[epoch] = loss_FD
             if (epoch + 1) % self.print_freq == 1:
                 elapsed_time = (time.time() - self.start_time) / 60.
@@ -128,7 +169,10 @@ class Trainer:
 
         # Interpolate heat at trajectories
         interpolated_heat_traj = interpolate_heat_solution(grid_traj_forward, heat_solution)
+        
         interpolated_heat_target = interpolate_heat_solution(u_target, heat_solution)
+        
+        
 
         # Regularization parameter and calculation
         lambda_reg = 1e-4 if self.reg == 'l1' else 1e-3

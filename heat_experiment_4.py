@@ -22,7 +22,7 @@ def train_hybrid():
     # =============================================================================
     # DATA
     # =============================================================================
-    filename_data = 'Experiments/4/u.mat'
+    filename_data = 'Experiments/4/u4new.mat'
     datasets = Dissipative(filename_data)
     t, u = datasets[:]
     
@@ -35,7 +35,8 @@ def train_hybrid():
     u_test = u[:, test_indices, :].to(device)
 
     # Define a grid of points within [-3, 3] with an added column of zeros
-    grid, u0 = create_grid(-3, 3, 0.6)
+    nX = 21
+    grid, u0 = create_grid(-3, 3, 6/(nX-1))
 
     # =============================================================================
     # SETUP
@@ -54,14 +55,13 @@ def train_hybrid():
     anode = NeuralODE(device, data_dim, hidden_dim, augment_dim=0, non_linearity='relu',
                       architecture='bottleneck', T=T, time_steps=num_steps).to(device)
 
-    heat = heatsolve(device, T=T, nX=11, time_steps=num_steps, param_grid=2).to(device)
+    heat = heatsolve(device, T=T, nX=nX, time_steps=num_steps, param_x=1, param_y=2).to(device)
 
     # Optimizers
     optimizer_anode = torch.optim.Adam(anode.dynamics.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    optimizer_heat = torch.optim.Adam(heat.parameters(), lr=5e-2, weight_decay=0.01) 
+    optimizer_heat = torch.optim.Adam(heat.parameters(), lr=1e-1) 
     scheduler_anode = torch.optim.lr_scheduler.OneCycleLR(optimizer_anode, max_lr=learning_rate, steps_per_epoch=1, epochs=num_epochs)
-    scheduler_heat = torch.optim.lr_scheduler.OneCycleLR(optimizer_heat, max_lr=5e-2, steps_per_epoch=1, epochs=num_epochs)
-
+    scheduler_heat = torch.optim.lr_scheduler.LambdaLR(optimizer_heat, lr_lambda=lambda epoch: 1.0e-1) #Just constant
     # =============================================================================
     # TRAINING
     # =============================================================================
@@ -89,20 +89,19 @@ def train():
     # =============================================================================
     # DATA
     # =============================================================================
-    filename_data = 'Experiments/4/u.mat'
+    filename_data = 'Experiments/4/u4new.mat'
     datasets = Dissipative(filename_data)
     t, u = datasets[:]
 
     # Create indices and split for train and test data
     train_size = int(0.6 * datasets.length_u())
-    print(train_size)
     indices = torch.randperm(datasets.length_u())
     train_indices, test_indices = indices[:train_size], indices[train_size:]
     u_train = u[:, train_indices, :].to(device)
     u_test = u[:, test_indices, :].to(device)
 
     # Define a grid of points within [-3, 3] with an added column of zeros
-    grid, u0 = create_grid(-3, 3, 0.6)
+    grid, u0 = create_grid(-3, 3, 0.3)
 
     # =============================================================================
     # SETUP
@@ -121,14 +120,13 @@ def train():
     anode = NeuralODE(device, data_dim, hidden_dim, augment_dim=0, non_linearity='relu',
                       architecture='bottleneck', T=T, time_steps=num_steps).to(device)
 
-    heat = heatsolve(device, T=T, nX=11, time_steps=num_steps, param_grid=2).to(device)
+    heat = heatsolve(device, T=T, nX=11, time_steps=num_steps, param_x=2, param_y=1).to(device)
 
     # Optimizers
     optimizer_anode = torch.optim.Adam(anode.dynamics.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    optimizer_heat = torch.optim.Adam(heat.parameters(), lr=5e-2, weight_decay=0.01)
+    optimizer_heat = torch.optim.Adam(heat.parameters(), lr=1e-1)
     scheduler_anode = torch.optim.lr_scheduler.OneCycleLR(optimizer_anode, max_lr=learning_rate, steps_per_epoch=1, epochs=num_epochs)
-    scheduler_heat = torch.optim.lr_scheduler.OneCycleLR(optimizer_heat, max_lr=5e-2, steps_per_epoch=1, epochs=num_epochs)
-
+    scheduler_heat = torch.optim.lr_scheduler.LambdaLR(optimizer_heat, lr_lambda=lambda epoch: 1.0e-1) #Just constant LR
     # =============================================================================
     # TRAINING
     # =============================================================================
@@ -193,14 +191,9 @@ if __name__ == '__main__':
         t, u = datasets[:]
         
         grid, u0 = create_grid(-3, 3, 0.6)
-        
-        print(grid.shape)
+
         
         grid = grid.reshape(11, 11, 3)
-        print(grid[1,1,0], grid[1,1,1])
-        print(grid[1,-2,0], grid[1,-2,1])
-        print(grid[-2,1,0], grid[-2,1,1])
-        print(grid[-2,-2,0], grid[-2,-2,1])
         
         
         ax1 = fig.add_subplot(121)

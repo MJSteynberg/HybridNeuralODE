@@ -35,8 +35,9 @@ def train_hybrid():
     u_train = u[:, train_indices, :].to(device)
     u_test = u[:, test_indices, :].to(device)
 
+    nX = 21
     # Define a grid of points within [-3, 3] with an added column of zeros
-    grid, u0 = create_grid(-3, 3, 0.6)
+    grid, u0 = create_grid(-3, 3, 6/(nX-1))
 
     # =============================================================================
     # SETUP
@@ -55,13 +56,13 @@ def train_hybrid():
     anode = NeuralODE(device, data_dim, hidden_dim, augment_dim=0, non_linearity='relu',
                       architecture='bottleneck', T=T, time_steps=num_steps).to(device)
 
-    heat = heatsolve(device, T=T, nX=11, time_steps=num_steps, param_grid=2).to(device)
+    heat = heatsolve(device, T=T, nX=nX, time_steps=num_steps, param_x=1, param_y=2).to(device)
 
     # Optimizers
     optimizer_anode = torch.optim.Adam(anode.dynamics.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    optimizer_heat = torch.optim.Adam(heat.parameters(), lr=5e-2)
+    optimizer_heat = torch.optim.Adam(heat.parameters(), lr=1e-1)
     scheduler_anode = torch.optim.lr_scheduler.OneCycleLR(optimizer_anode, max_lr=learning_rate, steps_per_epoch=1, epochs=num_epochs)
-    scheduler_heat = torch.optim.lr_scheduler.OneCycleLR(optimizer_heat, max_lr=5e-2, steps_per_epoch=1, epochs=num_epochs)
+    scheduler_heat = torch.optim.lr_scheduler.LambdaLR(optimizer_heat, lr_lambda=lambda epoch: 1.0e-1) #Just constant
 
     # =============================================================================
     # TRAINING
@@ -103,7 +104,8 @@ def train():
     u_test = u[:, test_indices, :].to(device)
 
     # Define a grid of points within [-3, 3] with an added column of zeros
-    grid, u0 = create_grid(-3, 3, 0.6)
+    nX = 21
+    grid, u0 = create_grid(-3, 3, 6/(nX-1))
 
     # =============================================================================
     # SETUP
@@ -122,14 +124,13 @@ def train():
     anode = NeuralODE(device, data_dim, hidden_dim, augment_dim=0, non_linearity='relu',
                       architecture='bottleneck', T=T, time_steps=num_steps).to(device)
 
-    heat = heatsolve(device, T=T, nX=11, time_steps=num_steps, param_grid=2).to(device)
+    heat = heatsolve(device, T=T, nX=nX, time_steps=num_steps, param_x = 2, param_y=1).to(device)
 
     # Optimizers
     optimizer_anode = torch.optim.Adam(anode.dynamics.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    optimizer_heat = torch.optim.Adam(heat.parameters(), lr=5e-2)
+    optimizer_heat = torch.optim.Adam(heat.parameters(), lr=1e-1)
     scheduler_anode = torch.optim.lr_scheduler.OneCycleLR(optimizer_anode, max_lr=learning_rate, steps_per_epoch=1, epochs=num_epochs)
-    scheduler_heat = torch.optim.lr_scheduler.OneCycleLR(optimizer_heat, max_lr=5e-2, steps_per_epoch=1, epochs=num_epochs)
-
+    scheduler_heat = torch.optim.lr_scheduler.LambdaLR(optimizer_heat, lr_lambda=lambda epoch: 1.0e-1) #Just constant
     # =============================================================================
     # TRAINING
     # =============================================================================
@@ -172,15 +173,15 @@ def create_grid(start, end, step):
 
 
 if __name__ == '__main__':
-    num_epochs = 2000
-    hidden_dim = 1000
+    num_epochs = 500
+    hidden_dim = 500
     learning_rate = 1e-3
     reg = 'l1'
     
     for i in range(1):
-        alpha_h, loss_h = train_hybrid()
-        np.save(f'Experiments/2/alpha_h_{i}.npy', alpha_h.detach())
-        np.save(f'Experiments/2/loss_h_{i}.npy', loss_h)
+        # alpha_h, loss_h = train_hybrid()
+        # np.save(f'Experiments/2/alpha_h_{i}.npy', alpha_h.detach())
+        # np.save(f'Experiments/2/loss_h_{i}.npy', loss_h)
         alpha_, loss_ = train()
         np.save(f'Experiments/2/alpha_{i}.npy', alpha_.detach())
         np.save(f'Experiments/2/loss_{i}.npy', loss_)
