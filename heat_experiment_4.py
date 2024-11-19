@@ -28,8 +28,7 @@ def train_hybrid():
     
 
     # Create indices and split for train and test data
-    train_size = int(1 * datasets.length_u())
-    print(train_size)
+    train_size = int(0.6 * datasets.length_u())
     indices = torch.randperm(datasets.length_u())
     train_indices, test_indices = indices[:train_size], indices[train_size:]
     u_train = u[:, train_indices, :].to(device)
@@ -59,7 +58,7 @@ def train_hybrid():
 
     # Optimizers
     optimizer_anode = torch.optim.Adam(anode.dynamics.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    optimizer_heat = torch.optim.Adam(heat.parameters(), lr=5e-2)
+    optimizer_heat = torch.optim.Adam(heat.parameters(), lr=5e-2, weight_decay=0.01) 
     scheduler_anode = torch.optim.lr_scheduler.OneCycleLR(optimizer_anode, max_lr=learning_rate, steps_per_epoch=1, epochs=num_epochs)
     scheduler_heat = torch.optim.lr_scheduler.OneCycleLR(optimizer_heat, max_lr=5e-2, steps_per_epoch=1, epochs=num_epochs)
 
@@ -95,7 +94,7 @@ def train():
     t, u = datasets[:]
 
     # Create indices and split for train and test data
-    train_size = int(1 * datasets.length_u())
+    train_size = int(0.6 * datasets.length_u())
     print(train_size)
     indices = torch.randperm(datasets.length_u())
     train_indices, test_indices = indices[:train_size], indices[train_size:]
@@ -126,7 +125,7 @@ def train():
 
     # Optimizers
     optimizer_anode = torch.optim.Adam(anode.dynamics.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    optimizer_heat = torch.optim.Adam(heat.parameters(), lr=5e-2)
+    optimizer_heat = torch.optim.Adam(heat.parameters(), lr=5e-2, weight_decay=0.01)
     scheduler_anode = torch.optim.lr_scheduler.OneCycleLR(optimizer_anode, max_lr=learning_rate, steps_per_epoch=1, epochs=num_epochs)
     scheduler_heat = torch.optim.lr_scheduler.OneCycleLR(optimizer_heat, max_lr=5e-2, steps_per_epoch=1, epochs=num_epochs)
 
@@ -177,7 +176,7 @@ if __name__ == '__main__':
     learning_rate = 1e-3
     reg = 'l1'
     
-    for i in range(0):
+    for i in range(1):
         alpha_h, loss_h = train_hybrid()
         np.save(f'Experiments/4/alpha_h_{i}.npy', alpha_h.detach())
         np.save(f'Experiments/4/loss_h_{i}.npy', loss_h)
@@ -189,23 +188,49 @@ if __name__ == '__main__':
         alpha_hybrid = np.load(f'Experiments/4/alpha_h_{i}.npy')
         alpha = np.load(f'Experiments/4/alpha_{i}.npy')
         fig = plt.figure()
-        ax1 = fig.add_subplot(121, projection='3d')
-        ax2 = fig.add_subplot(122, projection='3d')
-        ax1.set_title('No Interaction (FD approach)')
-        ax2.set_title('Interaction (Hybrid approach)')
+        filename_data = 'Experiments/4/u.mat'
+        datasets = Dissipative(filename_data)
+        t, u = datasets[:]
+        
+        grid, u0 = create_grid(-3, 3, 0.6)
+        
+        print(grid.shape)
+        
+        grid = grid.reshape(11, 11, 3)
+        print(grid[1,1,0], grid[1,1,1])
+        print(grid[1,-2,0], grid[1,-2,1])
+        print(grid[-2,1,0], grid[-2,1,1])
+        print(grid[-2,-2,0], grid[-2,-2,1])
+        
+        
+        ax1 = fig.add_subplot(121)
+        ax2 = fig.add_subplot(122)
         ax1.set_xlim(-3, 3)
         ax1.set_ylim(-3, 3)
-        ax1.set_zlim(0, 10)
         ax2.set_xlim(-3, 3)
         ax2.set_ylim(-3, 3)
-        ax2.set_zlim(0, 5)  
-        x = np.linspace(-3, 3, 11)
-        y = np.linspace(-3, 3, 11)
-        X, Y = np.meshgrid(x, y)
-        ax1.plot_surface(X, Y, alpha[-1], cmap='viridis')
-        ax2.plot_surface(X, Y, alpha_hybrid[-1], cmap='viridis')
+        ax1.imshow(alpha[-1].T, extent=(-3, 3, -3, 3), origin='lower', interpolation='bilinear', cmap='coolwarm')
+        ax2.imshow(alpha_hybrid[-1].T, extent=(-3, 3, -3, 3), origin='lower', interpolation='bilinear', cmap='coolwarm')
+        # plot the value at the center of each of the four corners
+        ax1.text(-2, -2, round(alpha[-1][1, 1],2), ha='center', va='center', color='black')
+        ax1.text(-2, 2, round(alpha[-1][1, -2],2), ha='center', va='center', color='black')
+        ax1.text(2, -2, round(alpha[-1][-2, 1],2), ha='center', va='center', color='black')
+        ax1.text(2, 2, round(alpha[-1][-2, -2],2), ha='center', va='center', color='black')
+        
+        ax2.text(-2, -2, round(alpha_hybrid[-1][1, 1],2), ha='center', va='center', color='black')
+        ax2.text(-2, 2, round(alpha_hybrid[-1][1, -2],2), ha='center', va='center', color='black')
+        ax2.text(2, -2, round(alpha_hybrid[-1][-2, 1],2), ha='center', va='center', color='black')
+        ax2.text(2, 2, round(alpha_hybrid[-1][-2, -2],2), ha='center', va='center', color='black')
+        
+        
+        
+        
         # plot the (xy) trajectories of the heat source
-        ax1.plot()
+        print(u.shape)
+        for j in range(0, 25):
+            ax1.plot(u[:, j, 0].cpu().numpy(), u[:, j, 1].cpu().numpy(), c='k')
+            ax2.plot(u[:, j, 0].cpu().numpy(), u[:, j, 1].cpu().numpy(), c='k')
+
         
         plt.savefig(f'Experiments/4/alpha_{i}.png', dpi = 300)
         
