@@ -8,6 +8,7 @@ from data.dataloaders import Dissipative
 import torch
 from torch.utils.data import DataLoader, Subset
 from models.training import Trainer
+from models.training_no_interaction import Trainer as Trainer_no_interaction
 import models.training_no_interaction as tni
 from models.neural_odes import NeuralODE
 from models.plot import plot_results_separate
@@ -18,23 +19,23 @@ import matplotlib.pyplot as plt
 device = torch.device('cpu')
 
 
-def train_hybrid():
+def train_hybrid(i):
     # =============================================================================
     # DATA
     # =============================================================================
     filename_data = 'Experiments/2/u.mat'
     datasets = Dissipative(filename_data)
     t, u = datasets[:]
-    
+    torch.set_rng_state(torch.manual_seed(42).get_state())
 
     # Create indices and split for train and test data
-    train_size = int(1 * datasets.length_u())
+    train_size = int(0.05*i * datasets.length_u())
     print(train_size)
     indices = torch.randperm(datasets.length_u())
     train_indices, test_indices = indices[:train_size], indices[train_size:]
     u_train = u[:, train_indices, :].to(device)
     u_test = u[:, test_indices, :].to(device)
-
+    
     nX = 21
     # Define a grid of points within [-3, 3] with an added column of zeros
     grid, u0 = create_grid(-3, 3, 6/(nX-1))
@@ -56,7 +57,7 @@ def train_hybrid():
     anode = NeuralODE(device, data_dim, hidden_dim, augment_dim=0, non_linearity='relu',
                       architecture='bottleneck', T=T, time_steps=num_steps).to(device)
 
-    heat = heatsolve(device, T=T, nX=nX, time_steps=num_steps, param_x=1, param_y=2).to(device)
+    heat = heatsolve(device, T=T, nX=nX, time_steps=num_steps, param_x=2, param_y=1).to(device)
 
     # Optimizers
     optimizer_anode = torch.optim.Adam(anode.dynamics.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -68,7 +69,7 @@ def train_hybrid():
     # TRAINING
     # =============================================================================
     trainer_anode = Trainer(anode, heat, optimizer_anode, optimizer_heat, scheduler_anode, scheduler_heat, device, reg=reg, grid=grid)
-    alpha_list = trainer_anode.train(u_train, u0, num_epochs)
+    alpha_list, loss_list = trainer_anode.train(u_train, u0, num_epochs)
 
     # # =============================================================================
     # # TESTING
@@ -85,18 +86,18 @@ def train_hybrid():
     # u_real = np.concatenate((u_train.detach().cpu().numpy(), u_test.detach().cpu().numpy()), axis=1)
 
     # plot_results_separate(u_real, u_train_NN, u_test_NN, dim=3, plot_type='Simulation')
-    return alpha_list
+    return alpha_list, loss_list, u_train
 
-def train():
+def train(i):
     # =============================================================================
     # DATA
     # =============================================================================
     filename_data = 'Experiments/2/u.mat'
     datasets = Dissipative(filename_data)
     t, u = datasets[:]
-
+    torch.set_rng_state(torch.manual_seed(42).get_state())
     # Create indices and split for train and test data
-    train_size = int(1 * datasets.length_u())
+    train_size = int(0.05*i * datasets.length_u())
     print(train_size)
     indices = torch.randperm(datasets.length_u())
     train_indices, test_indices = indices[:train_size], indices[train_size:]
@@ -134,8 +135,8 @@ def train():
     # =============================================================================
     # TRAINING
     # =============================================================================
-    trainer_anode = Trainer(anode, heat, optimizer_anode, optimizer_heat, scheduler_anode, scheduler_heat, device, reg=reg, grid=grid)
-    alpha_list = trainer_anode.train(u_train, u0, num_epochs)
+    trainer_anode = Trainer_no_interaction(anode, heat, optimizer_anode, optimizer_heat, scheduler_anode, scheduler_heat, device, reg=reg, grid=grid)
+    alpha_list, loss_list = trainer_anode.train(u_train, u0, num_epochs)
 
     # # =============================================================================
     # # TESTING
@@ -152,7 +153,7 @@ def train():
     # u_real = np.concatenate((u_train.detach().cpu().numpy(), u_test.detach().cpu().numpy()), axis=1)
 
     # plot_results_separate(u_real, u_train_NN, u_test_NN, dim=3, plot_type='Simulation')
-    return alpha_list
+    return alpha_list, loss_list, u_train
 
 
 def create_grid(start, end, step):
@@ -173,27 +174,29 @@ def create_grid(start, end, step):
 
 
 if __name__ == '__main__':
-    num_epochs = 500
-    hidden_dim = 500
+    num_epochs = 1000
+    hidden_dim = 1000
     learning_rate = 1e-3
     reg = 'l1'
     
-    for i in range(1):
-        # alpha_h, loss_h = train_hybrid()
-        # np.save(f'Experiments/2/alpha_h_{i}.npy', alpha_h.detach())
-        # np.save(f'Experiments/2/loss_h_{i}.npy', loss_h)
-        alpha_, loss_ = train()
-        np.save(f'Experiments/2/alpha_{i}.npy', alpha_.detach())
-        np.save(f'Experiments/2/loss_{i}.npy', loss_)
+    # for i in range(1,5):
         
-    for i in range(1):
+    #     alpha_, loss_, u_train= train(i)
+    #     np.save(f'Experiments/2/alpha_{i}.npy', alpha_.detach())
+    #     np.save(f'Experiments/2/loss_{i}.npy', loss_)
+    #     np.save(f'Experiments/2/u_train_{i}.npy', u_train)
+    #     alpha_h, loss_h, u_train = train_hybrid(i)
+    #     np.save(f'Experiments/2/alpha_h_{i}.npy', alpha_h.detach())
+    #     np.save(f'Experiments/2/loss_h_{i}.npy', loss_h)
+    #     np.save(f'Experiments/2/u_train_h_{i}.npy', u_train)
+        
+    for i in range(1,5):
         alpha_hybrid = np.load(f'Experiments/2/alpha_h_{i}.npy')
         alpha = np.load(f'Experiments/2/alpha_{i}.npy')
+        u_train = np.load(f'Experiments/2/u_train_{i}.npy')
+        u_train_hybrid = np.load(f'Experiments/2/u_train_h_{i}.npy')
         
         fig = plt.figure()
-        filename_data = 'Experiments/2/u.mat'
-        datasets = Dissipative(filename_data)
-        t, u = datasets[:]
         
         grid, u0 = create_grid(-3, 3, 0.6)
         
@@ -219,23 +222,25 @@ if __name__ == '__main__':
         ax1.text(-2, 2, round(alpha[-1][1, -2],2), ha='center', va='center', color='black')
         ax1.text(2, -2, round(alpha[-1][-2, 1],2), ha='center', va='center', color='black')
         ax1.text(2, 2, round(alpha[-1][-2, -2],2), ha='center', va='center', color='black')
+        ax1.set_title('Finite Difference')
         
         ax2.text(-2, -2, round(alpha_hybrid[-1][1, 1],2), ha='center', va='center', color='black')
         ax2.text(-2, 2, round(alpha_hybrid[-1][1, -2],2), ha='center', va='center', color='black')
         ax2.text(2, -2, round(alpha_hybrid[-1][-2, 1],2), ha='center', va='center', color='black')
         ax2.text(2, 2, round(alpha_hybrid[-1][-2, -2],2), ha='center', va='center', color='black')
+        ax2.set_title('Hybrid')
         
-        
-        
+        plt.savefig(f'Experiments/2/alpha_{round(i*0.05,2)}_no_traj.png', dpi = 300)
         
         # plot the (xy) trajectories of the heat source
-        print(u.shape)
-        for j in range(0, 25):
-            ax1.plot(u[:, j, 0].cpu().numpy(), u[:, j, 1].cpu().numpy(), c='k')
-            ax2.plot(u[:, j, 0].cpu().numpy(), u[:, j, 1].cpu().numpy(), c='k')
+        print(u_train.shape)
+        for j in range(0, u_train.shape[1]):
+            ax1.plot(u_train[:, j, 0], u_train[:, j, 1], c='k')
+        for j in range(0, u_train_hybrid.shape[1]):
+            ax2.plot(u_train_hybrid[:, j, 0], u_train_hybrid[:, j, 1], c='k')
 
         
-        plt.savefig(f'Experiments/2/alpha_{i}.png', dpi = 300)
+        plt.savefig(f'Experiments/2/alpha_{round(i*0.05,2)}.png', dpi = 300)
         
             
 

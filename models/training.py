@@ -151,7 +151,7 @@ class Trainer:
                 elapsed_time = (time.time() - self.start_time) / 60.
                 print(
                     f"Epoch {epoch + 1}/{self.num_epochs} | Loss: {loss:.3e} | Time: {elapsed_time:.1f} min | "
-                    f"Alpha: {self.model_heat.alpha}")
+                    f"Alpha: {self.model_heat.alpha} | Alpha_grad: {self.model_heat.alpha.grad}")
 
         print(f"Total time: {time.time() - self.start_time:.1f} sec")
         
@@ -200,9 +200,9 @@ class Trainer:
 
         # Calculate the loss
         loss_FD = self.loss_func(interpolated_heat_target, u_target[:, :, 2])
-        loss = (100 * self.loss_func(traj, u_target)
+        loss = (1000 * self.loss_func(traj, u_target)
                 + lambda_reg * ls_reg
-                + 1000 * loss_FD
+                + 10 * loss_FD
                 + self.loss_func(interpolated_heat_traj, grid_traj_forward[:, :, 2])) + 1e6 * torch.relu(torch.max(-self.model_heat.alpha))
 
         # Optimizer steps

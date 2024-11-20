@@ -148,9 +148,8 @@ class Trainer:
             loss_list[epoch] = loss_FD
             if (epoch + 1) % self.print_freq == 1:
                 elapsed_time = (time.time() - self.start_time) / 60.
-                print(
-                    f"Epoch {epoch + 1}/{self.num_epochs} | Loss: {loss:.3e} | Time: {elapsed_time:.1f} min | "
-                    f"Alpha: {torch.max(self.model_heat.alpha):.10f}")
+                print(f"Epoch {epoch + 1}/{self.num_epochs} | Loss: {loss:.3e} | Time: {elapsed_time:.1f} min | "
+                    f"Alpha: {self.model_heat.alpha}")
 
         print(f"Total time: {time.time() - self.start_time:.1f} sec")
         return alpha_list, loss_list
@@ -195,7 +194,7 @@ class Trainer:
 
         # Calculate the loss
         loss_FD = self.loss_func(interpolated_heat_target, u_target[:, :, 2])
-        loss = 1000 * loss_FD + 1e6 * torch.relu(torch.max(-self.model_heat.alpha))
+        loss = 10 * loss_FD + 1e6 * torch.relu(torch.max(-self.model_heat.alpha))
                 #+ self.loss_func(interpolated_heat_traj, grid_traj_forward[:, :, 2]))
 
         # Optimizer steps

@@ -44,7 +44,7 @@ class heatsolve(nn.Module):
     def forward(self, u0):
         # Initialize solution: the grid of u(k, i, j) as a tensor
         u = torch.empty((self.time_steps, self.nX, self.nX), dtype=torch.float, device=self.device)
-        gamma = (F.interpolate(self.alpha.unsqueeze(0).unsqueeze(0), size=(self.nX, self.nX), mode='nearest') * self.delta_t / (self.delta_x ** 2)).squeeze(0).squeeze(0)
+        gamma = (F.interpolate(self.alpha.unsqueeze(0).unsqueeze(0), size=(self.nX, self.nX), mode='nearest') / (self.delta_x ** 2)).squeeze(0).squeeze(0)
         # Boundary conditions (fixed temperature)
         u_top = 0.0
         u_left = 0.0
@@ -62,9 +62,12 @@ class heatsolve(nn.Module):
 
         
         for k in range(self.time_steps - 1):
-            u[k + 1, 1:-1, 1:-1] = gamma[1:-1, 1:-1] * (
-                    u[k, 2:, 1:-1] + u[k, :-2, 1:-1] + u[k, 1:-1, 2:] + u[k, 1:-1, :-2] - 4 * u[k, 1:-1, 1:-1]
-            ) + u[k, 1:-1, 1:-1]
+            u[k + 1, 1:-1, 1:-1] = self.delta_t * (
+                gamma[1:-1, 1:-1] * (u[k, 2:, 1:-1] + u[k, :-2, 1:-1] + u[k, 1:-1, 2:] + u[k, 1:-1, :-2] - 4 * u[k, 1:-1, 1:-1]) 
+                + (gamma[1:-1,2:] - gamma[1:-1,1:-1])*(u[k, 1:-1, 2:] - u[k, 1:-1, 1:-1]) 
+                + (gamma[2:,1:-1] - gamma[1:-1,1:-1])*(u[k, 2:, 1:-1] - u[k, 1:-1, 1:-1])) + u[k, 1:-1, 1:-1] 
+            
+            
 
         return u[1:]
 
