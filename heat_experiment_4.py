@@ -7,12 +7,10 @@ Optimized Code
 from data.dataloaders import Dissipative
 import torch
 from torch.utils.data import DataLoader, Subset
-from models.training import Trainer
-from models.training_no_interaction import Trainer as Trainer_no_interaction
-import models.training_no_interaction as tni
-from models.neural_odes import NeuralODE
+from models.training_new import Trainer
+from models.neural_odes_new import NeuralODE
 from models.plot import plot_results_separate
-from models.FEM import heatsolve
+from models.FEM import HeatEquation
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -27,9 +25,15 @@ def train_hybrid(i):
     datasets = Dissipative(filename_data)
     t, u = datasets[:]
     torch.set_rng_state(torch.manual_seed(42).get_state())
+    
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111, projection='3d')
+    # for i in range(0, u.shape[1]):
+    #     ax.plot(u[:, i, 0].detach().cpu().numpy(), u[:, i, 1].detach().cpu().numpy(), u[:, i, 2].detach().cpu().numpy())
+    # plt.show()
 
     # Create indices and split for train and test data
-    train_size = int(0.05*i * datasets.length_u())
+    train_size = int(0.1*i * datasets.length_u())
     print(train_size)
     indices = torch.randperm(datasets.length_u())
     train_indices, test_indices = indices[:train_size], indices[train_size:]
@@ -50,14 +54,15 @@ def train_hybrid(i):
     # Choose optimizer settings
     L1 = False
     weight_decay = 0.0 if L1 else 0.01 * dt
-
+    L = 6
+    N = nX
     # =============================================================================
     # MODEL SETUP
     # =============================================================================
     anode = NeuralODE(device, data_dim, hidden_dim, augment_dim=0, non_linearity='relu',
                       architecture='bottleneck', T=T, time_steps=num_steps).to(device)
 
-    heat = heatsolve(device, T=T, nX=nX, time_steps=num_steps, param_x=2, param_y=1).to(device)
+    heat =  HeatEquation(device, L, N, dt, num_steps, param_x = 2, param_y = 1, alpha = None)
 
     # Optimizers
     optimizer_anode = torch.optim.Adam(anode.dynamics.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -97,7 +102,7 @@ def train(i):
     t, u = datasets[:]
     torch.set_rng_state(torch.manual_seed(42).get_state())
     # Create indices and split for train and test data
-    train_size = int(0.05*i * datasets.length_u())
+    train_size = int(0.1*i * datasets.length_u())
     print(train_size)
     indices = torch.randperm(datasets.length_u())
     train_indices, test_indices = indices[:train_size], indices[train_size:]
@@ -118,14 +123,15 @@ def train(i):
     # Choose optimizer settings
     L1 = False
     weight_decay = 0.0 if L1 else 0.01 * dt
-
+    L = 6
+    N = nX
     # =============================================================================
     # MODEL SETUP
     # =============================================================================
     anode = NeuralODE(device, data_dim, hidden_dim, augment_dim=0, non_linearity='relu',
                       architecture='bottleneck', T=T, time_steps=num_steps).to(device)
 
-    heat = heatsolve(device, T=T, nX=nX, time_steps=num_steps, param_x = 2, param_y=1).to(device)
+    heat = HeatEquation(device, L, N, dt, num_steps, param_x = 1, param_y = 1, alpha = None)
 
     # Optimizers
     optimizer_anode = torch.optim.Adam(anode.dynamics.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -135,7 +141,7 @@ def train(i):
     # =============================================================================
     # TRAINING
     # =============================================================================
-    trainer_anode = Trainer_no_interaction(anode, heat, optimizer_anode, optimizer_heat, scheduler_anode, scheduler_heat, device, reg=reg, grid=grid)
+    trainer_anode = Trainer(anode, heat, optimizer_anode, optimizer_heat, scheduler_anode, scheduler_heat, device, reg=reg, grid=grid, interaction=False)
     alpha_list, loss_list = trainer_anode.train(u_train, u0, num_epochs)
 
     # # =============================================================================
@@ -179,16 +185,17 @@ if __name__ == '__main__':
     learning_rate = 1e-3
     reg = 'l1'
     
-    # for i in range(1,5):
+    for i in range(1,5):
         
-    #     alpha_, loss_, u_train= train(i)
-    #     np.save(f'Experiments/4/alpha_{i}.npy', alpha_.detach())
-    #     np.save(f'Experiments/4/loss_{i}.npy', loss_)
-    #     np.save(f'Experiments/4/u_train_{i}.npy', u_train)
-    #     alpha_h, loss_h, u_train = train_hybrid(i)
-    #     np.save(f'Experiments/4/alpha_h_{i}.npy', alpha_h.detach())
-    #     np.save(f'Experiments/4/loss_h_{i}.npy', loss_h)
-    #     np.save(f'Experiments/4/u_train_h_{i}.npy', u_train)
+        
+        alpha_h, loss_h, u_train = train_hybrid(i)
+        np.save(f'Experiments/4/alpha_h_{i}.npy', alpha_h.detach())
+        np.save(f'Experiments/4/loss_h_{i}.npy', loss_h)
+        np.save(f'Experiments/4/u_train_h_{i}.npy', u_train)
+        alpha_, loss_, u_train= train(i)
+        np.save(f'Experiments/4/alpha_{i}.npy', alpha_.detach())
+        np.save(f'Experiments/4/loss_{i}.npy', loss_)
+        np.save(f'Experiments/4/u_train_{i}.npy', u_train)
         
     for i in range(1,5):
         alpha_hybrid = np.load(f'Experiments/4/alpha_h_{i}.npy')
@@ -230,7 +237,7 @@ if __name__ == '__main__':
         ax2.text(2, 2, round(alpha_hybrid[-1][-2, -2],2), ha='center', va='center', color='black')
         ax2.set_title('Hybrid')
         
-        plt.savefig(f'Experiments/4/alpha_{round(i*0.05, 2)}_no_traj.png', dpi = 300)
+        plt.savefig(f'Experiments/4/alpha_{round(i*0.1,2)}_no_traj.png', dpi = 300)
         
         # plot the (xy) trajectories of the heat source
         print(u_train.shape)
@@ -240,7 +247,7 @@ if __name__ == '__main__':
             ax2.plot(u_train_hybrid[:, j, 0], u_train_hybrid[:, j, 1], c='k')
 
         
-        plt.savefig(f'Experiments/4/alpha_{round(i*0.05, 2)}.png', dpi = 300)
+        plt.savefig(f'Experiments/4/alpha_{round(i*0.1,2)}.png', dpi = 300)
         
             
 
