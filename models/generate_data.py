@@ -2,7 +2,7 @@ import torch
 from torchdiffeq import odeint
 import matplotlib.pyplot as plt
 from FEM import AdvectionDiffusion, HeatEquation, AdvectionDiffusionG, HeatEquationG, WaveEquationG
-from training_new import interpolate_heat_solution
+from HybridNeuralODE.models.training import interpolate_heat_solution
 import numpy as np
 
 # Define the ODE system
