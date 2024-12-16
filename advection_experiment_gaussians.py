@@ -14,7 +14,7 @@ from models.FEM import AdvectionDiffusionG
 import numpy as np
 import matplotlib.pyplot as plt
 
-device = torch.device('cpu')
+device = torch.device('cuda')
 
 
 def train_hybrid(i):
@@ -69,8 +69,8 @@ def train_hybrid(i):
 
     num_gaussians_alpha = 1
     num_gaussians_kappa = 1
-    alpha = torch.tensor([1, 0.2, 1.3, 1]).float() # [Amplitude, Amplitude, x0, x0, y0, y0, sigma, sigma]
-    kappa = torch.tensor([1, -0.5, -1, 1.0]).float() # [Amplitude, Amplitude, x0, x0, y0, y0, sigma, sigma]
+    alpha = torch.tensor([1, 1.4, -1.3, 1.0]).float() # [Amplitude, Amplitude, x0, x0, y0, y0, sigma, sigma]
+    kappa = torch.tensor([1, -2, -1.1, 1.0]).float().to(device) # [Amplitude, Amplitude, x0, x0, y0, y0, sigma, sigma]
     heat = AdvectionDiffusionG(device, L, N, dt, num_steps, num_gaussians_alpha, num_gaussians_kappa, alpha = alpha, kappa = kappa)
     heat.create_advection_map()
     heat.create_diffusion_map()
@@ -155,8 +155,8 @@ def train(i):
 
     num_gaussians_alpha = 1
     num_gaussians_kappa = 1
-    alpha = torch.tensor([1, 0.2, 1.3, 1]).float() # [Amplitude, Amplitude, x0, x0, y0, y0, sigma, sigma]
-    kappa = torch.tensor([1, -0.5, -1, 1.0]).float() # [Amplitude, Amplitude, x0, x0, y0, y0, sigma, sigma]
+    alpha = torch.tensor([1, 1.4, -1.3, 1.0]).float() # [Amplitude, Amplitude, x0, x0, y0, y0, sigma, sigma]
+    kappa = torch.tensor([1, -2, -1.1, 1.0]).float().to(device) # [Amplitude, Amplitude, x0, x0, y0, y0, sigma, sigma]
     heat = AdvectionDiffusionG(device, L, N, dt, num_steps, num_gaussians_alpha, num_gaussians_kappa, alpha = alpha, kappa = kappa)
 
     # Optimizers
@@ -198,7 +198,7 @@ def create_grid(start, end, step):
     x, y = grid[:, 0], grid[:, 1]
     
     L = 6
-    u0 =torch.exp(-((x + 1) ** 2 + (y + 1) ** 2)) + torch.exp(-((x - 1) ** 2 + (y - 1) ** 2))
+    u0 = - torch.exp(-((x + 1) ** 2 + (y + 1) ** 2)) + torch.exp(-((x - 1) ** 2 + (y - 1) ** 2))
     plate_length = int(np.sqrt(grid.shape[0]))
     u0_reshaped = u0.reshape(plate_length, plate_length)
 
@@ -207,7 +207,7 @@ def create_grid(start, end, step):
 
 
 if __name__ == '__main__':
-    num_epochs = 3000
+    num_epochs = 2000
     hidden_dim = 1000
     learning_rate = 1e-3
     reg = 'l1'

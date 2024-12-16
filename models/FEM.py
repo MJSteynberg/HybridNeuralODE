@@ -108,14 +108,14 @@ class AdvectionDiffusion(nn.Module):
         # Parameters with gradients
         
         if alpha is not None:
-            self.alpha = nn.Parameter(alpha)
+            self.alpha = nn.Parameter(alpha).to(self.device)
             if self.alpha.shape != (param_x, param_y):
                 raise ValueError("Shape of alpha does not match the parameters.")
         else:
             self.alpha = nn.Parameter(torch.ones((param_x, param_y), dtype=torch.float32, device=self.device))
             
         if kappa is not None:
-            self.kappa = nn.Parameter(kappa)
+            self.kappa = nn.Parameter(kappa).to(self.device)
             if self.kappa.shape != (param_x, param_y):
                 raise ValueError("Shape of alpha does not match the parameters.")
         else:
@@ -516,22 +516,22 @@ class AdvectionDiffusionG(nn.Module):
         # interpolate alpha to the grid
         diffusion_map = 0.1*torch.ones((self.N, self.N), dtype=torch.float32, device=self.device)
         
-        x = torch.linspace(-self.L//2, self.L//2, self.N)
-        y = torch.linspace(-self.L//2, self.L//2, self.N)
+        x = torch.linspace(-self.L//2, self.L//2, self.N).to(self.device)
+        y = torch.linspace(-self.L//2, self.L//2, self.N).to(self.device)
         x, y = torch.meshgrid(x, y, indexing='ij')
         for i in range(self.num_gaussians_alpha):
-            diffusion_map += self.alpha[i] * torch.exp(-((x - self.alpha[self.num_gaussians_alpha + i]) ** 2 + (y - self.alpha[2*self.num_gaussians_alpha + i]) ** 2))
+            diffusion_map += self.alpha[i] * torch.exp(-((x + self.alpha[self.num_gaussians_alpha + i]) ** 2 + (y + self.alpha[2*self.num_gaussians_alpha + i]) ** 2))
         return diffusion_map
     
     def create_advection_map(self):
         # interpolate alpha to the grid
         advection_map = 0.1*torch.ones((self.N, self.N), dtype=torch.float32, device=self.device)
         
-        x = torch.linspace(-self.L//2, self.L//2, self.N)
-        y = torch.linspace(-self.L//2, self.L//2, self.N)
+        x = torch.linspace(-self.L//2, self.L//2, self.N).to(self.device)
+        y = torch.linspace(-self.L//2, self.L//2, self.N).to(self.device)
         x, y = torch.meshgrid(x, y, indexing='ij')
         for i in range(self.num_gaussians_kappa):
-            advection_map += self.kappa[i] * torch.exp(-((x - self.kappa[self.num_gaussians_kappa + i]) ** 2 + (y - self.kappa[2*self.num_gaussians_kappa + i]) ** 2))
+            advection_map += self.kappa[i] * torch.exp(-((x + self.kappa[self.num_gaussians_kappa + i]) ** 2 + (y + self.kappa[2*self.num_gaussians_kappa + i]) ** 2))
         return advection_map
     
     def penalization(self):

@@ -95,12 +95,12 @@ def advectiondiffusion():
 def advectiondiffusionG():
     num_steps = 10000
     L = 6.0  # from -3 to 3
-    N = 200
+    N = 100
     T = 1
     num_gaussians_alpha = 1
     num_gaussians_kappa = 1
-    alpha = torch.tensor([1,  1, 1, 1.0]).float() # [Amplitude, Amplitude, x0, x0, y0, y0, sigma, sigma]
-    kappa = torch.tensor([1, -2, -1, 1.0]).float() # [Amplitude, Amplitude, x0, x0, y0, y0, sigma, sigma]
+    alpha = torch.tensor([3,  1, 1, 1.0]).float() # [Amplitude, Amplitude, x0, x0, y0, y0, sigma, sigma]
+    kappa = torch.tensor([2.5, -2, -2, 1.0]).float() # [Amplitude, Amplitude, x0, x0, y0, y0, sigma, sigma]
     
 
     dt = T / num_steps
@@ -109,19 +109,6 @@ def advectiondiffusionG():
 
     # Create the heat equation model
     heat = AdvectionDiffusionG(device, L, N, dt, num_steps + 1, num_gaussians_alpha, num_gaussians_kappa, alpha = alpha, kappa = kappa)
-    
-    # plot the diffusivity map 
-    diff_map = heat.create_diffusion_map()
-    plt.imshow(diff_map.detach().reshape(N, N), origin='lower', vmin=0, vmax=1)
-    plt.colorbar()
-    plt.title('Diffusivity map')
-    plt.show()
-    
-    advec_map = heat.create_advection_map()
-    plt.imshow(advec_map.detach().reshape(N, N), origin='lower', vmin=0, vmax=1)
-    plt.colorbar()
-    plt.title('Advectivity map')
-    plt.show()
 
     # Create a sum of gaussians initial condition
     x = torch.linspace(-3,3, N)
@@ -129,7 +116,7 @@ def advectiondiffusionG():
     x, y = torch.meshgrid(x, y, indexing='ij')
     u0 = torch.zeros(N, N)
 
-    u0 = torch.exp(-((x + 1) ** 2 + (y + 1) ** 2)) + torch.exp(-((x - 1) ** 2 + (y - 1) ** 2))
+    u0 = - torch.exp(-((x + 1) ** 2 + (y + 1) ** 2)) + torch.exp(-((x - 1) ** 2 + (y - 1) ** 2))
     heat_solution = heat(u0)
 
     # show u0 

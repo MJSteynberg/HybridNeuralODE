@@ -183,7 +183,7 @@ class Trainer:
         traj = self.model_node.f(u_train)
 
         # # Find node prediction on random points to compare with fd
-        forward_random_points = torch.randn((8, 2)).to(self.device)
+        forward_random_points = torch.randn((10, 2)).to(self.device) -1
         u0_init = interpolate_heat_solution(forward_random_points.unsqueeze(0), u0.unsqueeze(0))
         init = torch.cat((forward_random_points, u0_init.T), dim=1)
         grid_traj_forward = self.model_node.f(init)
