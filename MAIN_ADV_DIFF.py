@@ -5,9 +5,10 @@ Optimized Code
 """
 
 from data.dataloaders import DataLoader_Scalar
+from models.generate_data import advectiondiffusion
 import torch
 from torch.utils.data import DataLoader, Subset
-from HybridNeuralODE.models.training import Trainer
+from models.training import Trainer
 from models.neural_odes import NeuralODE
 from models.plot import plot_results_separate
 from models.FEM import AdvectionDiffusion
@@ -38,12 +39,13 @@ def setup(split, nX, L, folder, num_gaussians_alpha = 1, num_gaussians_kappa = 1
 
     optimizer_node = torch.optim.Adam(node.dynamics.parameters(), lr=learning_rate)
     optimizer_phys = torch.optim.Adam(phys.parameters(), lr=1e-1)
+
     scheduler_node = torch.optim.lr_scheduler.OneCycleLR(optimizer_node, max_lr=learning_rate, steps_per_epoch=1, epochs=num_epochs)
-    scheduler_phys = torch.optim.lr_scheduler.LambdaLR(optimizer_phys, lr_lambda=lambda epoch: 1.0e-1) #Just constant
+    scheduler_phys = torch.optim.lr_scheduler.LambdaLR(optimizer_phys, lr_lambda=lambda epoch: 1.0e-1)
 
     # create trainer 
     trainer = Trainer(node, phys, optimizer_node, optimizer_phys, scheduler_node, scheduler_phys, device, grid=grid, interaction=interaction)
-    return u_train, u0, trainer
+    return u_train, indices, u0, trainer
 
 def create_grid(start, end, step):
     x = torch.arange(start, end + step, step, device=device)
@@ -62,6 +64,13 @@ def create_grid(start, end, step):
 
 if __name__ == '__main__':
 
+    if input("Regenerate data? (y/n)") == "y":
+        print("---------------------------------")
+        print("--------Generating data----------")
+        print("---------------------------------")
+        advectiondiffusion()
+
+
     # Common parameters: 
     split = 0.2
     nX = 21
@@ -69,29 +78,42 @@ if __name__ == '__main__':
     folder = 'data/adv_diff'
     num_gaussians_alpha = 1
     num_gaussians_kappa = 1
+    alpha_real = torch.tensor([3,  1, 1, 1.0]).float() 
+    kappa_real = torch.tensor([2.5, -2, -2, 1.0]).float()
+
     alpha = torch.tensor([1, 1.4, -1.3, 1.0]).float().to(device) # [Amplitude, x0, y0, sigma]
     kappa = torch.tensor([1, -2, -1.1, 1.0]).float().to(device) # [Amplitude, x0, y0, sigma]
     hidden_dim = 1000
     learning_rate = 1e-3
-    num_epochs = 10
+    num_epochs = 2000
 
-    u_train, u0, trainer_hybrid = setup(split, nX, L, folder, num_gaussians_alpha, num_gaussians_kappa, alpha, kappa, hidden_dim, learning_rate, num_epochs, interaction = True)
-    _,_,trainer_phys = setup(split, nX, L, folder, num_gaussians_alpha, num_gaussians_kappa, alpha, kappa, hidden_dim, learning_rate, num_epochs, interaction = False)
+    u_train, indices, u0, trainer_hybrid = setup(split, nX, L, folder, num_gaussians_alpha, num_gaussians_kappa, alpha, kappa, hidden_dim, learning_rate, num_epochs, interaction = True)
+    _,_,_,trainer_phys = setup(split, nX, L, folder, num_gaussians_alpha, num_gaussians_kappa, alpha, kappa, hidden_dim, learning_rate, num_epochs, interaction = False)
     print("--------------------------------")
     print("--------Setup finished----------")
     print("--------------------------------")
+    print("------- Hybrid training: -------")
+    print("--------------------------------")
     params_hybrid = trainer_hybrid.train(u_train, u0, num_epochs)
+    print("--------------------------------")
+    print("------- Physics training: ------")
+    print("--------------------------------")
     params_phys = trainer_phys.train(u_train, u0, num_epochs)
     print("--------------------------------")
     print("-------Training finished--------")
     print("--------------------------------")
 
     # Save all parameters to parameters folder using date and time in name
-    df = pd.DataFrame(np.stack([params_hybrid.flatten(), params_phys.flatten()]).T, columns=["params_hybrid", "params_phys"])
+    params_real = np.concatenate((alpha_real, kappa_real))
+    params = pd.DataFrame(np.stack([params_real.flatten(), params_hybrid.flatten(), params_phys.flatten()]).T, columns=["params_real", "params_hybrid", "params_phys"])
+    train_indices = pd.DataFrame(indices, columns = ['training_indices'])
     
     # Get the current date and time to include in the filename
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
 
     # Save the DataFrame to CSV with the timestamp in the filename
-    df.to_csv(f'parameters/adv_diff/param_{timestamp}.csv', index=False)
+    params.to_csv(f'parameters/adv_diff/param_{timestamp}.csv', index=False)
+    train_indices.to_csv(f'parameters/adv_diff/index_{timestamp}.csv', index=False)
+
+
 

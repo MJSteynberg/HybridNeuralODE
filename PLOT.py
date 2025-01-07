@@ -3,49 +3,71 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
+import pandas as pd
+import os 
+from datetime import datetime
+from data.dataloaders import DataLoader_Scalar
+
+def gaussian(param, num_gaussians=1, N=100, L=6):
+    # interpolate alpha to the grid
+    gaussian_map = 0.1*np.ones((N, N), dtype=np.float32)
+    
+    x = np.linspace(-L//2, L//2, N)
+    y = np.linspace(-L//2, L//2, N)
+    x, y = np.meshgrid(x, y, indexing='ij')
+    for i in range(num_gaussians):
+        gaussian_map += param[i] * np.exp(-((x + param[num_gaussians + i]) ** 2 + (y + param[2*num_gaussians + i]) ** 2))
+    return gaussian_map
+
+def load_files(folder):
+
+    # List all files in the directory
+    files = os.listdir(folder)
+
+    # Filter files that match the naming pattern 'param_YYYY-MM-DD_HH-MM-SS.csv'
+    param_files = [f for f in files if f.startswith('param_') and f.endswith('.csv')]
+    index_files = [f for f in files if f.startswith('index_') and f.endswith('.csv')]
+
+    # Sort files based on the timestamp in the filename
+    param_files.sort(key=lambda x: datetime.strptime(x[6:25], '%Y-%m-%d_%H-%M-%S'), reverse=True)
+    index_files.sort(key=lambda x: datetime.strptime(x[6:25], '%Y-%m-%d_%H-%M-%S'), reverse=True)
+
+    # Load the most recent param and index files
+    recent_param_file = param_files[0]
+    recent_index_file = index_files[0]
+
+    param_df = pd.read_csv(os.path.join(folder, recent_param_file))
+    index_df = pd.read_csv(os.path.join(folder, recent_index_file))
+
+    return param_df, index_df
+
 def plot_gaussians():
-
-
     torch.set_rng_state(torch.manual_seed(42).get_state())
+    device = 'cpu'
 
-    # fig = plt.figure()
-    # ax = fig.add_subplot(111, projection='3d')
-    # for i in range(0, u.shape[1]):
-    #     ax.plot(u[:, i, 0].detach().cpu().numpy(), u[:, i, 1].detach().cpu().numpy(), u[:, i, 2].detach().cpu().numpy())
-    # plt.show()
+    results_folder = 'parameters/adv_diff/'
+    data_folder = 'data/adv_diff'
 
-    # Create indices and split for train and test data
-    train_size = int(0.2 * length_u)
-    print(train_size)
-    indices = torch.randperm(length_u)
-    train_indices, test_indices = indices[:train_size], indices[train_size:]
-    u_train = u[:, train_indices, :].detach().numpy()
-    u_test = u[:, test_indices, :]
+    params, indices = load_files(results_folder)
+    data = DataLoader_Scalar(device, data_folder)
+    u_train = data.u[:, indices['training_indices'], :].detach().numpy()
+    
 
 
-    def gaussian(param, num_gaussians=1, N=100, L=6):
-        # interpolate alpha to the grid
-        advection_map = 0.1*np.ones((N, N), dtype=np.float32)
-        
-        x = np.linspace(-L//2, L//2, N)
-        y = np.linspace(-L//2, L//2, N)
-        x, y = np.meshgrid(x, y, indexing='ij')
-        for i in range(num_gaussians):
-            advection_map += param[i] * np.exp(-((x + param[num_gaussians + i]) ** 2 + (y + param[2*num_gaussians + i]) ** 2))
-        return advection_map
-
-    alpha_real = gaussian(param_1)
-    alpha_hybrid = gaussian(param_hybrid_1, num_gaussians=1)
-    alpha_physics = gaussian(param_fd_1, num_gaussians=1)
-    c_real = gaussian(param_2)
-    c_hybrid = gaussian(param_hybrid_2)
-    c_physics = gaussian(param_fd_2)
+    alpha_real = gaussian(params["params_real"][:4].values)
+    alpha_hybrid = gaussian(params["params_hybrid"][:4].values)
+    alpha_phys = gaussian(params["params_phys"][:4].values)
+    kappa_real = gaussian(params["params_real"][4:].values)
+    kappa_hybrid = gaussian(params["params_hybrid"][4:].values)
+    kappa_phys = gaussian(params["params_phys"][4:].values)
     fig, axs = plt.subplots(2, 3, figsize=(12, 8), constrained_layout=True)
     colormap = 'viridis'
-    L = 3
-    global_max = 3
 
-    im1 = axs[1][0].imshow(alpha_physics,
+    L = 3
+    global_max = np.max(np.concatenate((alpha_real, kappa_real)))
+
+    # Setup all heatmaps
+    im1 = axs[1][0].imshow(alpha_phys,
                         extent=(-L, L, -L, L),
                         origin='lower',
                         cmap=colormap,
@@ -64,35 +86,33 @@ def plot_gaussians():
                         vmin=0,
                         vmax=global_max - 0.5)
 
-    im1 = axs[0][0].imshow(c_physics,
+    im1 = axs[0][0].imshow(kappa_phys,
                         extent=(-L, L, -L, L),
                         origin='lower',
                         cmap=colormap,
                         vmin=0,
                         vmax=global_max - 0.5)
-    im2 = axs[0][1].imshow(c_hybrid,
+    im2 = axs[0][1].imshow(kappa_hybrid,
                         extent=(-L, L, -L, L),
                         origin='lower',
                         cmap=colormap,
                         vmin=0,
                         vmax=global_max - 0.5)
-    im3 = axs[0][2].imshow(c_real,
+    im3 = axs[0][2].imshow(kappa_real,
                         extent=(-L, L, -L, L),
                         origin='lower',
                         cmap=colormap,
                         vmin=0,
                         vmax=global_max - 0.5)
 
-    # for j in range(u_train.shape[1]):
-    #     axs[0].plot(u_train[:, j, 0], u_train[:, j, 1], c='k')
-    #     axs[1].plot(u_train[:, j, 0], u_train[:, j, 1], c='k')
-    alpha_mean_error_physics = abs(alpha_physics - alpha_real).mean()
+    # Calculate L1 errors
+    alpha_mean_error_physics = abs(alpha_phys - alpha_real).mean()
     alpha_mean_error_hybrid = abs(alpha_hybrid - alpha_real).mean()
-    c_mean_error_physics = abs(c_physics - c_real).mean()
-    c_mean_error_hybrid = abs(c_hybrid - c_real).mean()
+    c_mean_error_physics = abs(kappa_phys - kappa_real).mean()
+    c_mean_error_hybrid = abs(kappa_hybrid - kappa_real).mean()
 
 
-
+    # Set titles including errors
     plt.rcParams['axes.titlesize'] = 14
     axs[1][0].set_title(r"$\kappa(x)   $ Physics: " + "\n" +
                         r"Mean Error:  $%.3e$" % alpha_mean_error_physics)
@@ -106,11 +126,13 @@ def plot_gaussians():
                         r"Mean Error:  $%.3e$" % c_mean_error_hybrid)
     axs[0][2].set_title(r"$\eta(x)  $ Real")
 
+    # Set axis limits
     for i in axs:
         for ax in i:
             ax.set_xlim(-3, 3)
             ax.set_ylim(-3, 3)
 
+    # Plot training data
     for j in range(u_train.shape[1]):
         axs[0][0].plot(u_train[:, j, 0], u_train[:, j, 1], c='k')
         axs[0][1].plot(u_train[:, j, 0], u_train[:, j, 1], c='k')
@@ -118,38 +140,37 @@ def plot_gaussians():
         axs[1][1].plot(u_train[:, j, 0], u_train[:, j, 1], c='k')
 
     fig.colorbar(im3, ax=axs, orientation='vertical', shrink=0.8, label="Legend")
-    plt.savefig('adv_diff.png', dpi=500)
+    plt.savefig(f'{results_folder}adv_diff.png', dpi=500)
 
 def plot_error():
 
-
     torch.set_rng_state(torch.manual_seed(42).get_state())
+    device = 'cpu'
+
+    results_folder = 'parameters/adv_diff/'
+    data_folder = 'data/adv_diff'
+
+    params, indices = load_files(results_folder)
+    data = DataLoader_Scalar(device, data_folder)
+    u_train = data.u[:, indices['training_indices'], :].detach().numpy()
+    
 
 
+    alpha_real = gaussian(params["params_real"][:4].values)
+    alpha_hybrid = gaussian(params["params_hybrid"][:4].values)
+    alpha_phys = gaussian(params["params_phys"][:4].values)
+    kappa_real = gaussian(params["params_real"][4:].values)
+    kappa_hybrid = gaussian(params["params_hybrid"][4:].values)
+    kappa_phys = gaussian(params["params_phys"][4:].values)
 
-    def gaussian(param, num_gaussians=1, N=100, L=6):
-        # interpolate alpha to the grid
-        advection_map = 0.1*np.ones((N, N), dtype=np.float32)
-        
-        x = np.linspace(-L//2, L//2, N)
-        y = np.linspace(-L//2, L//2, N)
-        x, y = np.meshgrid(x, y, indexing='ij')
-        for i in range(num_gaussians):
-            advection_map += param[i] * np.exp(-((x + param[num_gaussians + i]) ** 2 + (y + param[2*num_gaussians + i]) ** 2))
-        return advection_map
-
-    alpha_real = gaussian(param_1)
-    alpha_hybrid = gaussian(param_hybrid_1, num_gaussians=1)
-    alpha_physics = gaussian(param_fd_1, num_gaussians=1)
-    c_real = gaussian(param_2)
-    c_hybrid = gaussian(param_hybrid_2)
-    c_physics = gaussian(param_fd_2)
+    
     fig, axs = plt.subplots(2, 2, figsize=(12, 8), constrained_layout=True)
     colormap = 'viridis'
     L = 3
-    global_max = max(np.max(np.abs(c_physics - c_real).flatten()), np.max(np.abs(c_hybrid - c_real).flatten()), np.max(np.abs(alpha_physics - alpha_real).flatten()), np.max(np.abs(alpha_hybrid - alpha_real).flatten()))
+    global_max = max(np.max(np.abs(kappa_phys - kappa_real).flatten()), np.max(np.abs(kappa_hybrid - kappa_real).flatten()), np.max(np.abs(alpha_phys - alpha_real).flatten()), np.max(np.abs(alpha_hybrid - alpha_real).flatten()))
 
-    im1 = axs[1][0].imshow(np.abs(alpha_physics - alpha_real),
+    # Setup heatmaps
+    im1 = axs[1][0].imshow(np.abs(alpha_phys - alpha_real),
                         extent=(-L, L, -L, L),
                         origin='lower',
                         cmap=colormap,
@@ -162,29 +183,27 @@ def plot_error():
                         vmin=0,
                         vmax=global_max)
 
-    im1 = axs[0][0].imshow(np.abs(c_physics - c_real),
+    im1 = axs[0][0].imshow(np.abs(kappa_phys - kappa_real),
                         extent=(-L, L, -L, L),
                         origin='lower',
                         cmap=colormap,
                         vmin=0,
                         vmax=global_max)
-    im2 = axs[0][1].imshow(np.abs(c_hybrid - c_real),
+    im2 = axs[0][1].imshow(np.abs(kappa_hybrid - kappa_real),
                         extent=(-L, L, -L, L),
                         origin='lower',
                         cmap=colormap,
                         vmin=0,
                         vmax=global_max)
 
-    # for j in range(u_train.shape[1]):
-    #     axs[0].plot(u_train[:, j, 0], u_train[:, j, 1], c='k')
-    #     axs[1].plot(u_train[:, j, 0], u_train[:, j, 1], c='k')
-    alpha_mean_error_physics = abs(alpha_physics - alpha_real).mean()
+    # Calculate L1 errors
+    alpha_mean_error_physics = abs(alpha_phys - alpha_real).mean()
     alpha_mean_error_hybrid = abs(alpha_hybrid - alpha_real).mean()
-    c_mean_error_physics = abs(c_physics - c_real).mean()
-    c_mean_error_hybrid = abs(c_hybrid - c_real).mean()
+    c_mean_error_physics = abs(kappa_phys - kappa_real).mean()
+    c_mean_error_hybrid = abs(kappa_hybrid - kappa_real).mean()
 
 
-
+    # Set titles including errors
     plt.rcParams['axes.titlesize'] = 14
     axs[1][0].set_title(r"$\kappa(x)   $Error Physics: " + "\n" +
                         r"Mean Error:  $%.3e$" % alpha_mean_error_physics)
@@ -196,23 +215,48 @@ def plot_error():
     axs[0][1].set_title(r"$\eta(x)   $ Error Hybrid:"+ "\n" +
                         r"Mean Error:  $%.3e$" % c_mean_error_hybrid)
 
+    # Set axis limits
     for i in axs:
         for ax in i:
             ax.set_xlim(-3, 3)
             ax.set_ylim(-3, 3)
 
+    # Plot training data
+    for j in range(u_train.shape[1]):
+        axs[0][0].plot(u_train[:, j, 0], u_train[:, j, 1], c='k')
+        axs[0][1].plot(u_train[:, j, 0], u_train[:, j, 1], c='k')
+        axs[1][0].plot(u_train[:, j, 0], u_train[:, j, 1], c='k')
+        axs[1][1].plot(u_train[:, j, 0], u_train[:, j, 1], c='k')
 
     fig.colorbar(im2, ax=axs, orientation='vertical', shrink=0.8, label="Legend")
-    plt.savefig('adv_diff_error.png', dpi=500)
+    plt.savefig(f'{results_folder}adv_diff_error.png', dpi=500)
 
 
-def compare_predictions(alpha_physics, alpha_hybrid, alpha_real, centers_physics, centers_hybrid, centers_real):
+
+
+
+def compare_predictions():
     """
     Compares the predictions of alpha (physics, hybrid, real) and centers (physics, hybrid, real) on the same plot.
     """
     # Reshape alpha and center values into 3x2 and 3x4 matrices
-    alpha_values = np.array([alpha_real, alpha_hybrid, alpha_physics])
-    centers_values = np.array([centers_real.ravel(), centers_hybrid.ravel(), centers_physics.ravel()])
+    
+    
+
+    results_folder = 'parameters/adv_diff/'
+
+    params, indices = load_files(results_folder)
+    alpha_real = np.array([params['params_real'][0], params['params_real'][4]])
+    alpha_hybrid = np.array([params['params_hybrid'][0], params['params_hybrid'][4]])
+    alpha_phys = np.array([params['params_phys'][0], params['params_phys'][4]])
+    alpha_values = np.array([alpha_real, alpha_hybrid, alpha_phys])
+
+    centers_real = np.array(np.concatenate((params['params_real'][1:3], params['params_real'][5:7])))
+    centers_hybrid = np.array(np.concatenate((params['params_hybrid'][1:3], params['params_hybrid'][5:7])))
+    centers_phys = np.array(np.concatenate((params['params_phys'][1:3], params['params_phys'][5:7])))
+    centers_values = np.array([centers_real.ravel(), centers_hybrid.ravel(), centers_phys.ravel()])
+    
+    
 
     # X-axis labels for 6 parameters
     parameter_names = [
@@ -266,33 +310,11 @@ def compare_predictions(alpha_physics, alpha_hybrid, alpha_real, centers_physics
     ax.legend()
 
     # Save the plot in the usual folder
-    plt.savefig('compare_predictions.png', dpi=500)
+    plt.savefig(f'{results_folder}compare_predictions.png', dpi=500)
     
 
-param_1 = [3,  1, 1, 1.0]
-param_2 = [2.5, -2, -2, 1.0]
-param_hybrid_1 = [1.1534, 0.7218, 1.3790, 1.0000]
-param_hybrid_2 = [ 2.9477, -2.0192, -2.1021,  1.0000]
-param_fd_1 = [ 0.3815,  1.9029, -2.9706,  1.0000]
-param_fd_2 = [ 2.9477, -2.0193, -2.1021,  1.0000]
 
-u = np.load('Experiments/gaussians/data.npy')
-u = torch.tensor(u, dtype=torch.float32)
-t = torch.linspace(0, 1, 100)
-
-length_u = u.shape[1]
-
-alpha_physics = np.array([0.3815, 2.9477])
-centers_physics = np.array([1.9029, -2.9706, -2.0193, -2.1021])
-
-alpha_hybrid = np.array([1.1534, 2.9477])
-centers_hybrid = np.array([0.7218, 1.3790, -2.0192, -2.1021])
-
-alpha_real = np.array([3, 2.5])
-centers_real = np.array([1, 1, -2, -2])
-compare_predictions(alpha_physics, alpha_hybrid, alpha_real, centers_physics, centers_hybrid, centers_real)
-
-#plot_gaussians()
-
+compare_predictions()
+plot_gaussians()
 plot_error()
 
