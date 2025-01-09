@@ -128,7 +128,7 @@ class AdvectionDiffusion(nn.Module):
         y = torch.linspace(-self.L//2, self.L//2, self.N).to(self.device)
         x, y = torch.meshgrid(x, y, indexing='ij')
         for i in range(self.num_gaussians_alpha):
-            diffusion_map += self.alpha[i] * torch.exp(-((x + self.alpha[self.num_gaussians_alpha + i]) ** 2 + (y + self.alpha[2*self.num_gaussians_alpha + i]) ** 2))
+            diffusion_map += self.alpha[i] * torch.exp(-((x - self.alpha[self.num_gaussians_alpha + i]) ** 2 + (y - self.alpha[2*self.num_gaussians_alpha + i]) ** 2))
         return diffusion_map
     
     def create_advection_map(self):
@@ -139,7 +139,7 @@ class AdvectionDiffusion(nn.Module):
         y = torch.linspace(-self.L//2, self.L//2, self.N).to(self.device)
         x, y = torch.meshgrid(x, y, indexing='ij')
         for i in range(self.num_gaussians_kappa):
-            advection_map += self.kappa[i] * torch.exp(-((x + self.kappa[self.num_gaussians_kappa + i]) ** 2 + (y + self.kappa[2*self.num_gaussians_kappa + i]) ** 2))
+            advection_map += self.kappa[i] * torch.exp(-((x - self.kappa[self.num_gaussians_kappa + i]) ** 2 + (y - self.kappa[2*self.num_gaussians_kappa + i]) ** 2))
         return advection_map
     
     def penalization(self):

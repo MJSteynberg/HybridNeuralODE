@@ -93,7 +93,7 @@ class Trainer:
                     elapsed_time = (time.time() - self.start_time) / 60.
                     print(
                         f"Epoch {epoch + 1}/{num_epochs} | Loss: {loss:.3e} | Loss_FD: {loss_FD:.3e}| Time: {elapsed_time:.1f} min | "
-                        f"(alpha1, alpha2): {[x for x in self.model_phys.parameters()]}")
+                        f"Params: {[x for x in self.model_phys.parameters()]}")
 
             print(f"Total time: {time.time() - self.start_time:.1f} sec")
             
@@ -104,7 +104,7 @@ class Trainer:
                     elapsed_time = (time.time() - self.start_time) / 60.
                     print(
                         f"Epoch {epoch + 1}/{num_epochs} | Loss: {loss:.3e} | Time: {elapsed_time:.1f} min | "
-                        f"(alpha1, alpha2): {[x for x in self.model_phys.parameters()]}")
+                        f"Params: {[x for x in self.model_phys.parameters()]}")
 
             print(f"Total time: {time.time() - self.start_time:.1f} sec")
 
@@ -155,7 +155,7 @@ class Trainer:
         traj = self.model_node.f(u_train)
 
         # # Find node prediction on random points to compare with fd
-        forward_random_points = torch.randn((10, 2)).to(self.device) -1
+        forward_random_points = 0.7*(6 * torch.rand((10, 2)).to(self.device) - 3)
         u0_init = interpolate_phys_solution(forward_random_points.unsqueeze(0), u0.unsqueeze(0))
         init = torch.cat((forward_random_points, u0_init.T), dim=1)
         grid_traj_forward = self.model_node.f(init)

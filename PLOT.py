@@ -16,7 +16,7 @@ def gaussian(param, num_gaussians=1, N=100, L=6):
     y = np.linspace(-L//2, L//2, N)
     x, y = np.meshgrid(x, y, indexing='ij')
     for i in range(num_gaussians):
-        gaussian_map += param[i] * np.exp(-((x + param[num_gaussians + i]) ** 2 + (y + param[2*num_gaussians + i]) ** 2))
+        gaussian_map += param[i] * np.exp(-((x - param[num_gaussians + i]) ** 2 + (y - param[2*num_gaussians + i]) ** 2))
     return gaussian_map
 
 def load_files(folder):
