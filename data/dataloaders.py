@@ -7,6 +7,7 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
+import os
 
 class DataLoader_Scalar(Dataset):
     """
@@ -21,7 +22,7 @@ class DataLoader_Scalar(Dataset):
         else:
             # Create dataset
             pass
-        if filename_t:
+        if os.path.exists(filename_t):
             t = np.load(filename_t)
         else:
             t = np.linspace(0, 1, u.shape[0])

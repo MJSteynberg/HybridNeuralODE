@@ -9,7 +9,7 @@ import numpy as np
 class SimpleHarmonicOscillator(torch.nn.Module):
     def forward(self, t, state):
         matrix = torch.tensor([[-0.1, -1], [1, -0.1]], dtype=torch.float32)
-        return matrix @ (state - 1.5)
+        return matrix @ (state)
 
 # Solve the ODE
 def solve_ode_with_odeint(x0, y0, t):
@@ -33,7 +33,8 @@ def solve_ode_with_odeint(x0, y0, t):
     solution = odeint(ode_func, initial_state, t)
     return solution
     
-def advectiondiffusion():
+def advectiondiffusion(flag = "partial"):
+    
     num_steps = 10000
     L = 6.0  # from -3 to 3
     N = 100
@@ -60,24 +61,41 @@ def advectiondiffusion():
     u0 = - torch.exp(-((x + 1) ** 2 + (y + 1) ** 2)) + torch.exp(-((x - 1) ** 2 + (y - 1) ** 2))
     heat_solution = adv_diff(u0)
 
-    # Create sensor initial conditions in [1,2]
-    a = torch.linspace(1, 2, sqrt_num_sensors)
-    b = torch.linspace(1, 2, sqrt_num_sensors)
-    x0, y0 = torch.meshgrid(a, b, indexing='ij')
-    x0 = x0.flatten()
-    y0 = y0.flatten()
+    if flag == "partial":
+        # Create sens   or initial conditions in [1,2]
+        a = torch.linspace(1, 2, sqrt_num_sensors)
+        b = torch.linspace(1, 2, sqrt_num_sensors)
+        x0, y0 = torch.meshgrid(a, b, indexing='ij')
+        x0 = x0.flatten()
+        y0 = y0.flatten()
+    else:
+        # Create sensors in [-3,3]
+        a = torch.linspace(-3, 3, sqrt_num_sensors)
+        b = torch.linspace(-3, 3, sqrt_num_sensors)
+        x0, y0 = torch.meshgrid(a, b, indexing='ij')
+        # if x0^2 + y0^2 > 3^2 remove the point
+        mask = x0**2 + y0**2 <= 3**2
+        x0 = x0[mask]
+        y0 = y0[mask]
+        x0 = x0.flatten()
+        y0 = y0.flatten()
 
+    data_pts = x0.shape[0]
 
-
-    data = torch.empty((num_steps, sqrt_num_sensors**2, 3))
+    data = torch.empty((num_steps, data_pts, 3))
     t = torch.linspace(0, T, num_steps)
-    for i in range(sqrt_num_sensors**2):
+    for i in range(data_pts):
         data[:,i,:2]= solve_ode_with_odeint(x0[i], y0[i], t)
+
+    # plot the data
+    for i in range(data_pts):
+        plt.scatter(data[:,i,0].detach(), data[:,i,1].detach(), c = 'k')
+    plt.savefig("sensors.png")
 
     data[:,:,2] = interpolate_phys_solution(data, heat_solution)
     
     # plot the data
-    for i in range(sqrt_num_sensors**2):
+    for i in range(data_pts):
         plt.plot(data[:,i,0].detach(), data[:,i,1].detach())
     plt.show()
 
@@ -85,6 +103,9 @@ def advectiondiffusion():
     data = data[::100,:,:]
     # save the data 
     import numpy as np
-    np.save('data/adv_diff/data.npy', data.detach().numpy())
+    if flag == "partial":
+        np.save('data/adv_diff/data.npy', data.detach().numpy())
+    else:
+        np.save(f'data/adv_diff/{flag}/data.npy', data.detach().numpy())
     
     

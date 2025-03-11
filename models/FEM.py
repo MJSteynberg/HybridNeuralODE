@@ -197,3 +197,50 @@ class AdvectionDiffusion(nn.Module):
         return intermediate_steps[1:]
     
     
+"""
+Incompressible Euler step function from Chatgpt:
+
+
+
+def step(self, rho, u):
+    # Copy the inputs for updating
+    rho_new = rho.copy()
+    u_new = u.copy()
+
+    dx = self.dx
+    dt = self.dt
+
+    # Compute finite differences
+    rho_x = (rho[2:] - rho[:-2]) / (2 * dx)
+    u_x = (u[2:] - u[:-2]) / (2 * dx)
+    rho_xx = (rho[:-2] - 2 * rho[1:-1] + rho[2:]) / dx**2
+    u_xx = (u[:-2] - 2 * u[1:-1] + u[2:]) / dx**2
+
+    # Compute source terms
+    a_rho_x = (self.a_func[2:] * rho[2:] - self.a_func[:-2] * rho[:-2]) / (2 * dx)
+    drag = 0.5 * self.theta * u[1:-1] * np.abs(u[1:-1]) / rho[1:-1]
+    gravity = self.g * rho[1:-1] * np.sin(self.alpha)
+
+    # Continuity equation
+    rho_new[1:-1] = rho[1:-1] - dt / (2 * dx) * (u[2:] - u[:-2])
+
+    # Momentum equation
+    convection_term = (
+        u[1:-1] / rho[1:-1] * (1 + 1 / rho[1:-1]) * u_x
+        - u[1:-1]**2 / rho[1:-1]**2 * rho_x
+    )
+    u_new[1:-1] = (
+        u[1:-1]
+        - dt * (convection_term + a_rho_x + drag + gravity)
+    )
+
+    # Neumann boundary conditions
+    rho_new[0] = rho_new[1]
+    rho_new[-1] = rho_new[-2]
+    u_new[0] = u_new[1]
+    u_new[-1] = u_new[-2]
+
+    return rho_new, u_new
+
+
+"""

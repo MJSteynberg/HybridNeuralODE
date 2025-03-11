@@ -38,10 +38,10 @@ def setup(split, nX, L, folder, num_gaussians_alpha = 1, num_gaussians_kappa = 1
     phys = AdvectionDiffusion(device, L, nX, dt, num_steps, num_gaussians_alpha, num_gaussians_kappa, alpha = alpha, kappa = kappa)
 
     optimizer_node = torch.optim.Adam(node.dynamics.parameters(), lr=learning_rate)
-    optimizer_phys = torch.optim.Adam(phys.parameters(), lr=1e-1)
+    optimizer_phys = torch.optim.Adam(phys.parameters(), lr=1e-3, betas = (0.5, 0.99999))
 
     scheduler_node = torch.optim.lr_scheduler.OneCycleLR(optimizer_node, max_lr=learning_rate, steps_per_epoch=1, epochs=num_epochs)
-    scheduler_phys = torch.optim.lr_scheduler.LambdaLR(optimizer_phys, lr_lambda=lambda epoch: 1.0e-1)
+    scheduler_phys = torch.optim.lr_scheduler.OneCycleLR(optimizer_phys, max_lr=1e-1, steps_per_epoch=1, epochs=num_epochs)
 
     # create trainer 
     trainer = Trainer(node, phys, optimizer_node, optimizer_phys, scheduler_node, scheduler_phys, device, grid=grid, interaction=interaction)
@@ -72,7 +72,7 @@ if __name__ == '__main__':
 
 
     # Common parameters: 
-    split = 0.4
+    split = 0.6
     nX = 21
     L = 6
     folder = 'data/adv_diff'
@@ -82,12 +82,14 @@ if __name__ == '__main__':
     kappa_real = torch.tensor([2.5, -2, -2, 1.0]).float()
 
     alpha = torch.tensor([1, 1.4, -1.3, 1.0]).float().to(device) # [Amplitude, x0, y0, sigma]
-    kappa = torch.tensor([1, -2, -1.1, 1.0]).float().to(device) # [Amplitude, x0, y0, sigma]
+    kappa = torch.tensor([2, -1.8, -1.1, 1.0]).float().to(device) # [Amplitude, x0, y0, sigma]
     hidden_dim = 1000
     learning_rate = 1e-3
     num_epochs = 3000
 
     u_train, indices, u0, trainer_hybrid = setup(split, nX, L, folder, num_gaussians_alpha, num_gaussians_kappa, alpha, kappa, hidden_dim, learning_rate, num_epochs, interaction = True)
+    alpha = torch.tensor([1, 1.4, -1.3, 1.0]).float().to(device) # [Amplitude, x0, y0, sigma]
+    kappa = torch.tensor([2, -1.8, -1.1, 1.0]).float().to(device) # [Amplitude, x0, y0, sigma]
     _,_,_,trainer_phys = setup(split, nX, L, folder, num_gaussians_alpha, num_gaussians_kappa, alpha, kappa, hidden_dim, learning_rate, num_epochs, interaction = False)
     print("--------------------------------")
     print("--------Setup finished----------")

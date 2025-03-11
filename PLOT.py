@@ -5,13 +5,14 @@ import matplotlib.pyplot as plt
 import torch
 import pandas as pd
 import os 
+import matplotlib.patheffects as pe
 from datetime import datetime
 from data.dataloaders import DataLoader_Scalar
 
-def gaussian(param, num_gaussians=1, N=100, L=6):
+def gaussian(param, num_gaussians=1, N=100, L=8):
     # interpolate alpha to the grid
     gaussian_map = 0.1*np.ones((N, N), dtype=np.float32)
-    
+    L = 8
     x = np.linspace(-L//2, L//2, N)
     y = np.linspace(-L//2, L//2, N)
     x, y = np.meshgrid(x, y, indexing='ij')
@@ -25,121 +26,132 @@ def load_files(folder):
     files = os.listdir(folder)
 
     # Filter files that match the naming pattern 'param_YYYY-MM-DD_HH-MM-SS.csv'
-    param_files = [f for f in files if f.startswith('param_') and f.endswith('.csv')]
+    param_files = [f for f in files if f.startswith('param_') and f.endswith('.csv') and not f.startswith('param_pinn_')]
+    param_pinn_files = [f for f in files if f.startswith('param_pinn_') and f.endswith('.csv')]
     index_files = [f for f in files if f.startswith('index_') and f.endswith('.csv')]
 
     # Sort files based on the timestamp in the filename
     param_files.sort(key=lambda x: datetime.strptime(x[6:25], '%Y-%m-%d_%H-%M-%S'), reverse=True)
+    param_pinn_files.sort(key=lambda x: datetime.strptime(x[11:30], '%Y-%m-%d_%H-%M-%S'), reverse=True)
     index_files.sort(key=lambda x: datetime.strptime(x[6:25], '%Y-%m-%d_%H-%M-%S'), reverse=True)
 
     # Load the most recent param and index files
     recent_param_file = param_files[0]
+    recent_param_pinn_file = param_pinn_files[0]
     recent_index_file = index_files[0]
 
+    # combine pinn param in param df
+
+
     param_df = pd.read_csv(os.path.join(folder, recent_param_file))
+    param_pinn_df = pd.read_csv(os.path.join(folder, recent_param_pinn_file))
+    param_df["params_pinn"] = param_pinn_df["params"]
+    # rename params to params_pinn
+    param_df = param_df.rename(columns={'params': 'params_pinn'})
     index_df = pd.read_csv(os.path.join(folder, recent_index_file))
+
 
     return param_df, index_df
 
 def plot_gaussians():
     torch.set_rng_state(torch.manual_seed(42).get_state())
     device = 'cpu'
-
     results_folder = 'parameters/adv_diff/'
     data_folder = 'data/adv_diff'
-
+    
     params, indices = load_files(results_folder)
     data = DataLoader_Scalar(device, data_folder)
     u_train = data.u[:, indices['training_indices'], :].detach().numpy()
     
+    # Compute gaussian maps for each model.
+    # We now include a PINN version.
+    L_extent = 4  # image extent (from -4 to 4)
+    # For alpha maps, lower-index elements and for kappa maps, later ones.
+    alpha_phys  = gaussian(params["params_phys"][:4].values)
+    alpha_pinn  = gaussian(params["params_pinn"][:4].values)
+    alpha_hybrid= gaussian(params["params_hybrid"][:4].values)
+    alpha_real  = gaussian(params["params_real"][:4].values)
+    
+    kappa_phys  = gaussian(params["params_phys"][4:].values)
+    kappa_pinn  = gaussian(params["params_pinn"][4:].values)
+    kappa_hybrid= gaussian(params["params_hybrid"][4:].values)
+    kappa_real  = gaussian(params["params_real"][4:].values)
+    
+    # Scale the color limits using the real solution only.
+    vmin_kappa, vmax_kappa = kappa_real.min(), kappa_real.max()
+    vmin_alpha, vmax_alpha = alpha_real.min(), alpha_real.max()
 
+    # Define the gridspec: Four images per row plus a colorbar axis (total 5 columns)
+    fig = plt.figure(figsize=(10, 4.5))
+    gs = fig.add_gridspec(
+        2, 5,
+        width_ratios=[1, 1, 1, 1, 0.2],
+        left=0.05, right=0.93, top=0.93, bottom=0.03,
+        wspace=0.1, hspace=0.1
+    )
+    
+    # Top row: Kappa maps in order: Physics, PINN, Hybrid, True.
+    ax0 = fig.add_subplot(gs[0, 0])
+    ax1 = fig.add_subplot(gs[0, 1])
+    ax2 = fig.add_subplot(gs[0, 2])
+    ax3 = fig.add_subplot(gs[0, 3])
+    ax_top_cb = fig.add_subplot(gs[0, 4])
+    # Bottom row: Alpha maps in order: Physics, PINN, Hybrid, True.
+    ax4 = fig.add_subplot(gs[1, 0])
+    ax5 = fig.add_subplot(gs[1, 1])
+    ax6 = fig.add_subplot(gs[1, 2])
+    ax7 = fig.add_subplot(gs[1, 3])
+    ax_bot_cb = fig.add_subplot(gs[1, 4])
+    
+    # Remove ticks and enforce square aspect ratio for all image axes.
+    for ax in [ax0, ax1, ax2, ax3, ax4, ax5, ax6, ax7]:
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_aspect("equal", adjustable="box")
+    
+    # Plot top row (Kappa maps)
+    cs0 = ax0.imshow(kappa_phys, extent=(-L_extent, L_extent, -L_extent, L_extent),
+                       origin='lower', cmap='viridis', vmin=vmin_kappa, vmax=vmax_kappa)
+    ax0.set_title("FD")
+    cs1 = ax1.imshow(kappa_pinn, extent=(-L_extent, L_extent, -L_extent, L_extent),
+                       origin='lower', cmap='viridis', vmin=vmin_kappa, vmax=vmax_kappa)
+    ax1.set_title("PINN")
+    cs2 = ax2.imshow(kappa_hybrid, extent=(-L_extent, L_extent, -L_extent, L_extent),
+                       origin='lower', cmap='viridis', vmin=vmin_kappa, vmax=vmax_kappa)
+    ax2.set_title("HYCO")
+    cs3 = ax3.imshow(kappa_real, extent=(-L_extent, L_extent, -L_extent, L_extent),
+                       origin='lower', cmap='viridis', vmin=vmin_kappa, vmax=vmax_kappa)
+    ax3.set_title("True")
+    cbar_top = fig.colorbar(cs0, cax=ax_top_cb, orientation="vertical", pad=0.02)
+    cbar_top.ax.tick_params(labelsize=10)
+    
+    # Optionally, overlay training trajectories on the Physics (ax0) subplot.
+    # Assumes u_train has shape (time, n_trajectories, dimensions) where dimensions>=2.
+    for traj in range(u_train.shape[1]):
+        ax0.plot(u_train[:, traj, 0], u_train[:, traj, 1], 'red', linewidth=1)
+        ax1.plot(u_train[:, traj, 0], u_train[:, traj, 1], 'red', linewidth=1)
+        ax2.plot(u_train[:, traj, 0], u_train[:, traj, 1], 'red', linewidth=1)
+        ax4.plot(u_train[:, traj, 0], u_train[:, traj, 1], 'red', linewidth=1)
+        ax5.plot(u_train[:, traj, 0], u_train[:, traj, 1], 'red', linewidth=1)
+        ax6.plot(u_train[:, traj, 0], u_train[:, traj, 1], 'red', linewidth=1)
 
-    alpha_real = gaussian(params["params_real"][:4].values)
-    alpha_hybrid = gaussian(params["params_hybrid"][:4].values)
-    alpha_phys = gaussian(params["params_phys"][:4].values)
-    kappa_real = gaussian(params["params_real"][4:].values)
-    kappa_hybrid = gaussian(params["params_hybrid"][4:].values)
-    kappa_phys = gaussian(params["params_phys"][4:].values)
-    fig, axs = plt.subplots(2, 3, figsize=(12, 8), constrained_layout=True)
-    colormap = 'viridis'
-
-    L = 3
-    global_max = np.max(np.concatenate((alpha_real, kappa_real)))
-
-    # Setup all heatmaps
-    im1 = axs[1][0].imshow(alpha_phys,
-                        extent=(-L, L, -L, L),
-                        origin='lower',
-                        cmap=colormap,
-                        vmin=0,
-                        vmax=global_max - 0.5)
-    im2 = axs[1][1].imshow(alpha_hybrid,
-                        extent=(-L, L, -L, L),
-                        origin='lower',
-                        cmap=colormap,
-                        vmin=0,
-                        vmax=global_max - 0.5)
-    im3 = axs[1][2].imshow(alpha_real,
-                        extent=(-L, L, -L, L),
-                        origin='lower',
-                        cmap=colormap,
-                        vmin=0,
-                        vmax=global_max - 0.5)
-
-    im1 = axs[0][0].imshow(kappa_phys,
-                        extent=(-L, L, -L, L),
-                        origin='lower',
-                        cmap=colormap,
-                        vmin=0,
-                        vmax=global_max - 0.5)
-    im2 = axs[0][1].imshow(kappa_hybrid,
-                        extent=(-L, L, -L, L),
-                        origin='lower',
-                        cmap=colormap,
-                        vmin=0,
-                        vmax=global_max - 0.5)
-    im3 = axs[0][2].imshow(kappa_real,
-                        extent=(-L, L, -L, L),
-                        origin='lower',
-                        cmap=colormap,
-                        vmin=0,
-                        vmax=global_max - 0.5)
-
-    # Calculate L1 errors
-    alpha_mean_error_physics = abs(alpha_phys - alpha_real).mean()
-    alpha_mean_error_hybrid = abs(alpha_hybrid - alpha_real).mean()
-    c_mean_error_physics = abs(kappa_phys - kappa_real).mean()
-    c_mean_error_hybrid = abs(kappa_hybrid - kappa_real).mean()
-
-
-    # Set titles including errors
-    plt.rcParams['axes.titlesize'] = 14
-    axs[1][0].set_title(r"$\kappa(x)   $ Physics: " + "\n" +
-                        r"Mean Error:  $%.3e$" % alpha_mean_error_physics)
-    axs[1][1].set_title(r"$\kappa(x)   $ Hybrid:" + "\n" +
-                        r"Mean Error:  $%.3e$" % alpha_mean_error_hybrid)
-    axs[1][2].set_title(r"$\kappa(x)  $ Real")
-
-    axs[0][0].set_title(r"$\eta(x)  $ Physics:"+ "\n" +
-                        r"Mean Error:  $%.3e$" % c_mean_error_physics)
-    axs[0][1].set_title(r"$\eta(x)   $ Hybrid:"+ "\n" +
-                        r"Mean Error:  $%.3e$" % c_mean_error_hybrid)
-    axs[0][2].set_title(r"$\eta(x)  $ Real")
-
-    # Set axis limits
-    for i in axs:
-        for ax in i:
-            ax.set_xlim(-3, 3)
-            ax.set_ylim(-3, 3)
-
-    # Plot training data
-    for j in range(u_train.shape[1]):
-        axs[0][0].plot(u_train[:, j, 0], u_train[:, j, 1], c='k')
-        axs[0][1].plot(u_train[:, j, 0], u_train[:, j, 1], c='k')
-        axs[1][0].plot(u_train[:, j, 0], u_train[:, j, 1], c='k')
-        axs[1][1].plot(u_train[:, j, 0], u_train[:, j, 1], c='k')
-
-    fig.colorbar(im3, ax=axs, orientation='vertical', shrink=0.8, label="Legend")
+    
+    # Plot bottom row (Alpha maps)
+    cs4 = ax4.imshow(alpha_phys, extent=(-L_extent, L_extent, -L_extent, L_extent),
+                       origin='lower', cmap='viridis', vmin=vmin_alpha, vmax=vmax_alpha)
+    cs5 = ax5.imshow(alpha_pinn, extent=(-L_extent, L_extent, -L_extent, L_extent),
+                       origin='lower', cmap='viridis', vmin=vmin_alpha, vmax=vmax_alpha)
+    cs6 = ax6.imshow(alpha_hybrid, extent=(-L_extent, L_extent, -L_extent, L_extent),
+                       origin='lower', cmap='viridis', vmin=vmin_alpha, vmax=vmax_alpha)
+    cs7 = ax7.imshow(alpha_real, extent=(-L_extent, L_extent, -L_extent, L_extent),
+                       origin='lower', cmap='viridis', vmin=vmin_alpha, vmax=vmax_alpha)
+    cbar_bot = fig.colorbar(cs4, cax=ax_bot_cb, orientation="vertical", pad=0.02)
+    cbar_bot.ax.tick_params(labelsize=10)
+    
+    # Add overall row labels.
+    fig.text(0.03, 0.75, r"$\kappa$", rotation=0, ha="center", va="center", fontsize=16)
+    fig.text(0.03, 0.25, r"$\eta$", rotation=0, ha="center", va="center", fontsize=16)
+    
     plt.savefig(f'{results_folder}adv_diff.png', dpi=500)
 
 def plot_error():
@@ -314,7 +326,5 @@ def compare_predictions():
     
 
 
-compare_predictions()
 plot_gaussians()
-plot_error()
 
