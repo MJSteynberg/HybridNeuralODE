@@ -110,10 +110,12 @@ def generate_synthetic_solution():
     x = grid[:, 0].reshape(-1,1)
     y = grid[:, 1].reshape(-1,1)
     u = u0.reshape(-1,1)
-    print(x.shape, y.shape, u.shape, torch.cat([x, y, u], dim=1).shape)
-    u_node = node.f(torch.cat([x, y, u], dim=1)).detach().numpy()
+    init = torch.cat([x, y, u], dim=1)
+    print(x.shape, y.shape, u.shape, init.shape)
+    u_node = node.f(init).detach().numpy()
+    # Synthetic solution excludes the initial condition, so add it here.
+    u_node = np.concatenate([init.unsqueeze(0), u_node], axis=0)
     return u_node[::20]
-
 
 
 # ...existing code...
@@ -127,6 +129,9 @@ if __name__ == '__main__':
     alpha_pred = model_state_dict['alpha'].to('cpu')
     kappa_pred = model_state_dict['kappa'].to('cpu')
     predicted_solution = generate_physical_solution(alpha_pred, kappa_pred)
+
+    print("alpha_pred", alpha_pred)
+    print("kappa_pred", kappa_pred)
 
     u_node = generate_synthetic_solution()
 
@@ -165,8 +170,8 @@ if __name__ == '__main__':
     vmax_sol = all_values.max().item()
 
     all_errors = (real_solution - predicted_solution).abs()
-    vmin_err = all_errors.min().item()
-    vmax_err = all_errors.max().item()
+    vmin_err = 0 #all_errors.min().item()
+    vmax_err = 0.3 #all_errors.max().item()
 
     # Top row: Real solution.
     for i, t_idx in enumerate(timesteps):

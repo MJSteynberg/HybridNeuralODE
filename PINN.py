@@ -3,6 +3,8 @@ import torch.nn as nn
 from data.dataloaders import DataLoader_Scalar
 from datetime import datetime
 import pandas as pd
+import torch.nn.functional as F
+import numpy as np
 
 
 class PINN2D(nn.Module):
@@ -118,7 +120,18 @@ def train_pinn(model, optimizer, L, T, x_train, y_train, t_train, u_train, num_e
     For a real application, supply boundary/initial condition
     losses and domain collocation points.
     """
+    x = torch.linspace(-3, 3, 50).to(device)
+    y = torch.linspace(-3, 3, 50).to(device)
+    t = torch.linspace(0, T, 100).to(device)[1:]
+    grid_x, grid_y, grid_t = torch.meshgrid(x, y, t, indexing='ij')
+
+
+    # High definition solution
+    data_high = np.load(folder + '/phys.npy')
+    data_high = torch.from_numpy(data_high).float().to(device)
+    mse = torch.zeros(epoch).to(device)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
     for epoch in range(num_epochs):
         # Sample points for initial condition
         x0 = torch.rand(1000, 1).to(device)*L - L/2
@@ -167,10 +180,20 @@ def train_pinn(model, optimizer, L, T, x_train, y_train, t_train, u_train, num_e
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+
+        with torch.no_grad():
+            # Calculate the mse on the high definition grid and solution
+            data_interp = F.interpolate(data_high.unsqueeze(1), size=(grid_x.shape[0], grid_x.shape[1]), mode='bilinear', align_corners=True)
+            data_interp = data_interp.squeeze(1)  # shape (99, 100, 100)
+            u_pred = model(grid_x, grid_y, grid_t)
+            print(u_pred.shape)
+            mse_phys = torch.mean((u_pred - data_interp) ** 2)
+            mse[epoch] = mse_phys.item()
+            
         
         if epoch % 100 == 0:
-            print(f"Epoch {epoch}, Loss: {loss.item()}, loss_data: {loss_data.item()}, loss_phys: {loss_phys.item()}")
-
+            print(f"Epoch {epoch}, Loss: {loss.item()}, loss_data: {loss_data.item()}, loss_phys: {loss_phys.item()}, mse_phys: {mse_phys.item()}")
+    return mse 
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -226,15 +249,18 @@ if __name__ == "__main__":
     T = 1
     model = PINN2D(net_layers, parameters, kappa=kappa, eta=eta).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    train_pinn(model, optimizer, L, T,
+    mse = train_pinn(model, optimizer, L, T,
                 x_train.reshape(-1,1), y_train.reshape(-1,1),
                 t_train.reshape(-1,1), u_train.reshape(-1,1), num_epochs=3000)
     
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     parameters = np.concatenate((parameters[0:3].cpu().numpy(), np.array([1.0]), parameters[3:6].cpu().numpy(), np.array([1.0])))
     params = pd.DataFrame(parameters, columns=["params"])
-    
+    errors = pd.DataFrame(mse, columns=["mse"])
     params.to_csv(f'parameters/adv_diff/param_pinn_{timestamp}.csv', index=False)
+    errors.to_csv(f'parameters/adv_diff/error_pinn_{timestamp}.csv', index=False)
+
+
     # Visualize the solution at t=0.5
     for i in np.linspace(0, 1, 11):
         visualize_pinn_solution(model, L, t_value=i, nx=50, ny=50)

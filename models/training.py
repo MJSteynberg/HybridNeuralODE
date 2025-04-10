@@ -3,6 +3,7 @@ import torch.nn as nn
 import time
 import matplotlib.pyplot as plt
 import numpy as np
+import torch.nn.functional as F
 
 import torch
 
@@ -25,7 +26,7 @@ def interpolate_phys_solution(data, phys_solution, nX=11):
 
     # Normalize query points across all time steps
     query_points = data[..., :2]  # Extract (x, y) coordinates
-    query_normalized = (query_points + 3) / 3 - 1
+    query_normalized = query_points / 3
     query_normalized = query_normalized.unsqueeze(1)
 
     # Prepare phys_solution for batch processing
@@ -53,7 +54,9 @@ class Trainer:
                  device,
                  grid,
                  print_freq=50, 
-                 interaction = True):
+                 interaction = True, 
+                 data_high = None, 
+                 u0 = None):
         self.model_node = model_node.to(device)
         self.model_phys = model_phys.to(device)
         self.optimizer_node = optimizer_node
@@ -64,11 +67,25 @@ class Trainer:
         self.loss_func = nn.MSELoss()
         self.print_freq = print_freq
         self.grid = grid
-        self.interaction = interaction  
+        self.interaction = interaction 
+        self.data_high = data_high 
+        self.u0 = u0
+        x = torch.linspace(-3, 3, 50).to(device)
+        y = torch.linspace(-3, 3, 50).to(device)
+        grid_x, grid_y = torch.meshgrid(x, y, indexing='ij')
+        
+        grid_high = torch.cat([grid_x.reshape(-1, 1), grid_y.reshape(-1, 1)], dim=1)
+        mask = grid_high[:, 0] ** 2 + grid_high[:, 1] ** 2 < 3**2
+        grid_high = grid_high[mask]
+        u0_init = interpolate_phys_solution(grid_high.unsqueeze(0), u0.unsqueeze(0))
+        self.init_high = torch.cat([grid_high, u0_init.T], dim=1)
+        
 
-    def train(self, u, u0, num_epochs):
+    def train(self, u, num_epochs):
         u_train = (u[0, :, :].to(self.device))
         u_target = u[1:, :, :].to(self.device)
+        errors_syn = torch.zeros(num_epochs).to(self.device)
+        errors_phys = torch.zeros(num_epochs).to(self.device)
         self.start_time = time.time()
         if self.interaction:
             loss = 1
@@ -76,7 +93,7 @@ class Trainer:
             #train trajectories first
             self.optimizer_node.param_groups[0]['lr'] = 1e-2
             while loss > 5e-3:
-                loss = self._train_epoch_trajectory(u_train, u_target, u0)
+                loss = self._train_epoch_trajectory(u_train, u_target)
                 epoch += 1
                 if (epoch + 1) % self.print_freq == 1:
                     elapsed_time = (time.time() - self.start_time) / 60.
@@ -88,7 +105,9 @@ class Trainer:
             
             
             for epoch in range(num_epochs):
-                loss, loss_FD = self._train_epoch(u_train, u_target, u0)
+                loss, loss_FD, mse_syn, mse_phys = self._train_epoch(u_train, u_target)
+                errors_syn[epoch] = mse_syn
+                errors_phys[epoch] = mse_phys
                 if (epoch + 1) % self.print_freq == 1:
                     elapsed_time = (time.time() - self.start_time) / 60.
                     print(
@@ -99,19 +118,20 @@ class Trainer:
             
         else:
             for epoch in range(num_epochs):
-                loss= self._train_epoch_nointeraction(u_target, u0)
+                loss, mse = self._train_epoch_nointeraction(u_target)
+                errors_phys[epoch] = mse
                 if (epoch + 1) % self.print_freq == 1:
                     elapsed_time = (time.time() - self.start_time) / 60.
                     print(
-                        f"Epoch {epoch + 1}/{num_epochs} | Loss: {loss:.3e} | Time: {elapsed_time:.1f} min | "
+                        f"Epoch {epoch + 1}/{num_epochs} | Loss: {loss:.3e} | MSE: {mse:.3e}| Time: {elapsed_time:.1f} min | "
                         f"Params: {[x for x in self.model_phys.parameters()]}")
-
+                
             print(f"Total time: {time.time() - self.start_time:.1f} sec")
 
-        return np.array([x.detach().cpu().numpy() for x in self.model_phys.parameters()])
-            
+        return np.array([x.detach().cpu().numpy() for x in self.model_phys.parameters()]), errors_syn.cpu().numpy(), errors_phys.cpu().numpy()
+    
         
-    def _train_epoch_trajectory(self, u_train, u_target, u0):
+    def _train_epoch_trajectory(self, u_train, u_target):
         traj = self.model_node.g(u_train)
         
         
@@ -126,9 +146,9 @@ class Trainer:
 
         return loss.item()
     
-    def _train_epoch_nointeraction(self, u_target, u0):
+    def _train_epoch_nointeraction(self, u_target):
         # Compute phys solution using the current value of alpha
-        phys_solution = self.model_phys(u0)
+        phys_solution = self.model_phys(self.u0)
 
         interpolated_phys_target = interpolate_phys_solution(u_target, phys_solution)
         
@@ -142,26 +162,39 @@ class Trainer:
         self.optimizer_phys.step()
         self.scheduler_phys.step()
 
-        return loss.item()
+        # Compute mse on a grid with high resolution data
+        if self.data_high is not None:
+            with torch.no_grad():
+                data_interp = F.interpolate(self.data_high.unsqueeze(1), size=(phys_solution.shape[1:]), mode='bilinear', align_corners=True)
+                data_interp = data_interp.squeeze(1)  # shape (99, 100, 100)
+                mse_phys = torch.mean((phys_solution - data_interp) ** 2)
+                
+
+        else:
+            mse_phys = 0
+
+        return loss.item(), mse_phys
         
         
         
     
-    def _train_epoch(self, u_train, u_target, u0):
+    def _train_epoch(self, u_train, u_target):
         # Compute phys solution using the current value of alpha
-        phys_solution = self.model_phys(u0)
+        phys_solution = self.model_phys(self.u0)
 
         # Compute trajectory predicted by NODE
         traj = self.model_node.f(u_train)
 
         # # Find node prediction on random points to compare with fd
-        forward_random_points = 0.7*(6 * torch.rand((10, 2)).to(self.device) - 3)
-        u0_init = interpolate_phys_solution(forward_random_points.unsqueeze(0), u0.unsqueeze(0))
+        forward_random_points = 0.7*(3 * torch.rand((50, 2)).to(self.device) - 3)
+        u0_init = interpolate_phys_solution(forward_random_points.unsqueeze(0), self.u0.unsqueeze(0))
         init = torch.cat((forward_random_points, u0_init.T), dim=1)
         grid_traj_forward = self.model_node.f(init)
 
         # Interpolate phys at trajectories
         interpolated_phys_traj = interpolate_phys_solution(grid_traj_forward, phys_solution)
+
+        
         
         interpolated_phys_target = interpolate_phys_solution(u_target, phys_solution)
         
@@ -188,4 +221,17 @@ class Trainer:
         self.scheduler_anode.step()
         self.scheduler_phys.step()
 
-        return loss.item(), loss_FD.item()
+        # Compute mse on a grid with high resolution data
+        if self.data_high is not None:
+            with torch.no_grad():
+                predicted_high = self.model_node.f(self.init_high)
+                interpolated_high = interpolate_phys_solution(predicted_high, self.data_high)
+                mse_syn = torch.mean((interpolated_high - predicted_high[:, :, 2]) ** 2)
+                data_interp = F.interpolate(self.data_high.unsqueeze(1), size=(phys_solution.shape[1:]), mode='bilinear', align_corners=True)
+                data_interp = data_interp.squeeze(1)  # shape (99, 100, 100)
+                mse_phys = torch.mean((phys_solution - data_interp) ** 2)
+
+        else:
+            mse = 0
+
+        return loss.item(), loss_FD.item(), mse_syn, mse_phys

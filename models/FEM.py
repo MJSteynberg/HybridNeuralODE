@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 import torch.nn.functional as F
     
 
-class HeatEquation(nn.Module):
+class Heat(nn.Module):
     def __init__(self, device, L, N, dt, num_steps, num_gaussians, alpha = None):
-        super(HeatEquation, self).__init__()
+        super(Heat, self).__init__()
         self.device = device
         self.L = L
         self.N = N
@@ -24,7 +24,8 @@ class HeatEquation(nn.Module):
         
         if alpha is not None:
             self.alpha = nn.Parameter(alpha)
-            if self.alpha.shape != (self.num_params):
+            if self.alpha.shape[0] != (self.num_params):
+                print(self.alpha.shape, self.num_params)
                 raise ValueError("Shape of alpha does not match the parameters.")
         else:
             self.alpha = nn.Parameter(torch.ones((self.num_params), dtype=torch.float32, device=self.device))
@@ -38,13 +39,13 @@ class HeatEquation(nn.Module):
 
     def create_diffusion_map(self):
         # interpolate alpha to the grid
-        diffusion_map = torch.zeros((self.N, self.N), dtype=torch.float32, device=self.device)
+        diffusion_map = 0.1*torch.ones((self.N, self.N), dtype=torch.float32, device=self.device)
         
-        x = torch.linspace(-self.L//2, self.L//2, self.N)
-        y = torch.linspace(-self.L//2, self.L//2, self.N)
+        x = torch.linspace(-self.L//2, self.L//2, self.N, device=self.device)
+        y = torch.linspace(-self.L//2, self.L//2, self.N, device=self.device)
         x, y = torch.meshgrid(x, y)
         for i in range(self.num_gaussians):
-            diffusion_map += self.alpha[i] * torch.exp(-((x - self.alpha[self.num_gaussians + i]) ** 2 + (y - self.alpha[2*self.num_gaussians + i]) ** 2) / self.alpha[3*self.num_gaussians + i])
+            diffusion_map += self.alpha[i] * torch.exp(-((x - self.alpha[self.num_gaussians + i]) ** 2 + (y - self.alpha[2*self.num_gaussians + i]) ** 2))
         return diffusion_map
     
     def penalization(self):

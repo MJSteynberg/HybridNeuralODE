@@ -25,6 +25,10 @@ def setup(split, nX, L, folder, num_gaussians_alpha = 1, num_gaussians_kappa = 1
     train_size = int(split*data.length_u())
     indices = torch.randperm(data.length_u())[:train_size]
 
+    # High definition solution
+    data_high = np.load(folder + '/phys.npy')
+    data_high = torch.from_numpy(data_high).float().to(device)
+
     # Obtain variables from data
     u_train = data.u[:, indices, :]
     grid, u0 = create_grid(-L//2, L//2, 6/(nX-1))
@@ -44,7 +48,7 @@ def setup(split, nX, L, folder, num_gaussians_alpha = 1, num_gaussians_kappa = 1
     scheduler_phys = torch.optim.lr_scheduler.OneCycleLR(optimizer_phys, max_lr=1e-1, steps_per_epoch=1, epochs=num_epochs)
 
     # create trainer 
-    trainer = Trainer(node, phys, optimizer_node, optimizer_phys, scheduler_node, scheduler_phys, device, grid=grid, interaction=interaction)
+    trainer = Trainer(node, phys, optimizer_node, optimizer_phys, scheduler_node, scheduler_phys, device, grid=grid, interaction=interaction, data_high=data_high, u0=u0)
     return u_train, indices, u0, trainer
 
 def create_grid(start, end, step):
@@ -68,7 +72,7 @@ if __name__ == '__main__':
         print("---------------------------------")
         print("--------Generating data----------")
         print("---------------------------------")
-        advectiondiffusion()
+        advectiondiffusion(flag="partial", L = 6)
 
 
     # Common parameters: 
@@ -87,24 +91,27 @@ if __name__ == '__main__':
     learning_rate = 1e-3
     num_epochs = 3000
 
-    u_train, indices, u0, trainer_hybrid = setup(split, nX, L, folder, num_gaussians_alpha, num_gaussians_kappa, alpha, kappa, hidden_dim, learning_rate, num_epochs, interaction = True)
-    alpha = torch.tensor([1, 1.4, -1.3, 1.0]).float().to(device) # [Amplitude, x0, y0, sigma]
-    kappa = torch.tensor([2, -1.8, -1.1, 1.0]).float().to(device) # [Amplitude, x0, y0, sigma]
-    _,_,_,trainer_phys = setup(split, nX, L, folder, num_gaussians_alpha, num_gaussians_kappa, alpha, kappa, hidden_dim, learning_rate, num_epochs, interaction = False)
+    u_train, indices, u0, trainer_hybrid = setup(split, nX, L, folder, num_gaussians_alpha, num_gaussians_kappa, alpha.clone(), kappa.clone(), hidden_dim, learning_rate, num_epochs, interaction = True)
+    _,_,_,trainer_phys = setup(split, nX, L, folder, num_gaussians_alpha, num_gaussians_kappa, alpha.clone(), kappa.clone(), hidden_dim, learning_rate, num_epochs, interaction = False)
     print("--------------------------------")
     print("--------Setup finished----------")
+
     print("--------------------------------")
     print("------- Hybrid training: -------")
     print("--------------------------------")
-    params_hybrid = trainer_hybrid.train(u_train, u0, num_epochs)
+    params_hybrid, error_hybrid_syn, error_hybrid_phys = trainer_hybrid.train(u_train, num_epochs)
+
     print("--------------------------------")
     print("------- Physics training: ------")
     print("--------------------------------")
-    params_phys = trainer_phys.train(u_train, u0, num_epochs)
+    params_phys, _, error_phys = trainer_phys.train(u_train, num_epochs)
+    
     print("--------------------------------")
     print("-------Training finished--------")
     print("--------------------------------")
-
+    # save errors
+    errors = pd.DataFrame(np.stack([error_hybrid_syn.flatten(), error_hybrid_phys.flatten(), error_phys.flatten()]).T, columns=["error_hybrid_syn", "error_hybrid_phys", "error_phys"])
+    # Get the current date and time to include in the filename
     # Save all parameters to parameters folder using date and time in name
     params_real = np.concatenate((alpha_real, kappa_real))
     params = pd.DataFrame(np.stack([params_real.flatten(), params_hybrid.flatten(), params_phys.flatten()]).T, columns=["params_real", "params_hybrid", "params_phys"])
@@ -116,6 +123,7 @@ if __name__ == '__main__':
     # Save the DataFrame to CSV with the timestamp in the filename
     params.to_csv(f'parameters/adv_diff/param_{timestamp}.csv', index=False)
     train_indices.to_csv(f'parameters/adv_diff/index_{timestamp}.csv', index=False)
+    errors.to_csv(f'parameters/adv_diff/errors_{timestamp}.csv', index=False)
 
 
 
